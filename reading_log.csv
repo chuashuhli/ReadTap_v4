@@ -1,0 +1,8 @@
+nfc_id,student_name,class,book_title,start_datetime,end_datetime,duration_minutes
+1001,SL,P3 Courage,Harry Potter,2026-07-25 20:15:32,2026-07-25 20:45:18,30
+1001,SL,P3 Courage,Percy Jackson,2026-07-26 19:10:05,2026-07-26 19:35:42,26
+1002,Emma,P4 Hope,Charlotte's Web,2026-07-26 16:02:11,2026-07-26 16:18:49,171001,SL,,Harry Potter,2026-07-25 22:11:35,2026-07-25 22:14:16,3
+1001,SL,,Charlotte's Web,2026-07-25 22:15:57,2026-07-25 22:16:02,0
+1001,SL,,Charlotte's Web,2026-07-25 22:16:18,2026-07-25 22:17:02,1
+1001,SL,,Charlotte's Web,2026-07-26 09:42:31,2026-07-26 09:43:10,1
+1001,SL,,Diary of a Wimpy Kid,2026-07-26 09:43:48,2026-07-26 09:44:09,0
