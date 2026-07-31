@@ -3,6 +3,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from database import save_reading_session
 
 st.set_page_config(page_title="ReadTap", page_icon="📚", layout="centered")
@@ -110,7 +111,7 @@ elif st.session_state.reading:
     st.info(f"Started at {st.session_state.start_time.strftime('%I:%M %p')}")
     if st.button("✅ Finish Reading"):
         st.write("Saving reading session...")
-        end=datetime.now()
+        end=datetime.now(ZoneInfo("Asia/Singapore"))
         minutes=round((end-st.session_state.start_time).total_seconds()/60)
         save_reading_session(
             student_name=user["nickname"],
@@ -150,6 +151,6 @@ else:
             st.session_state.current_book=book
             user_df.loc[0,"current_book"]=book
             user_df.to_csv("user.csv",index=False)
-            st.session_state.start_time=datetime.now()
+            st.session_state.start_time=datetime.now(ZoneInfo("Asia/Singapore"))
             st.session_state.reading=True
             st.rerun()
