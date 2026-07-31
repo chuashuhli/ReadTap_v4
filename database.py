@@ -1,7 +1,24 @@
-import pandas as pd
-import os
+import streamlit as st
+import gspread
+from google.oauth2.service_account import Credentials
 
-LOG_FILE = "reading_log.csv"
+
+def get_sheet():
+
+    SCOPES = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=SCOPES
+    )
+
+    client = gspread.authorize(creds)
+
+    return client.open("Reading Logs").sheet1
+
 
 
 def save_reading_session(
@@ -14,27 +31,15 @@ def save_reading_session(
     minutes
 ):
 
-    new_record = pd.DataFrame([{
+    sheet = get_sheet()
 
-    "nfc_id": nfc_id,
-    "student_name": student_name,
-    "class": student_class,
-    "book_title": book_title,
-    "start_datetime": start_time.strftime("%Y-%m-%d %H:%M:%S"),
-    "end_datetime": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-    "duration_minutes": minutes
-
-    }])
-
-    if not os.path.exists(LOG_FILE):
-
-        new_record.to_csv(LOG_FILE, index=False)
-
-    else:
-
-        new_record.to_csv(
-            LOG_FILE,
-            mode="a",
-            header=False,
-            index=False
-        )
+    sheet.append_row([
+        start_time.strftime("%Y-%m-%d"),
+        str(student_name),
+        str(nfc_id),
+        str(student_class),
+        str(book_title),
+        start_time.strftime("%H:%M:%S"),
+        end_time.strftime("%H:%M:%S"),
+        int(minutes)
+    ])
