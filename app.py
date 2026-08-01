@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from database import save_reading_session
+from database import save_reading_session, calculate_reading_streak
 
 st.set_page_config(page_title="ReadTap", page_icon="📚", layout="centered")
 
@@ -22,6 +22,7 @@ for k,v in {
 # ---------- User ----------
 user_df = pd.read_csv("user.csv")
 user = user_df.iloc[0]
+streak = calculate_reading_streak(user["nickname"])
 
 # ---------- Recent books ----------
 try:
@@ -81,7 +82,7 @@ st.markdown(f"""
 <p>🏅 {user["badge"]}</p>
 <p>📖 Last Book: <b>{user["current_book"]}</b></p>
 <p>🎯 Daily Goal: {user["goal"]} mins</p>
-<p>🔥 Reading Streak: {user["streak"]} days</p>
+<p>🔥 Reading Streak: {streak} days</p>
 </div>
 """,unsafe_allow_html=True)
 

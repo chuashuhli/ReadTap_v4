@@ -43,3 +43,48 @@ def save_reading_session(
         end_time.strftime("%H:%M:%S"),
         int(minutes)
     ])
+
+
+from datetime import datetime, timedelta
+import pandas as pd
+
+
+def calculate_reading_streak(student_name):
+
+    sheet = get_sheet()
+
+    records = sheet.get_all_records()
+
+    if not records:
+        return 0
+
+    df = pd.DataFrame(records)
+
+    df = df[df["User"] == student_name]
+
+    if df.empty:
+        return 0
+
+    dates = (
+        pd.to_datetime(df["Date"])
+        .dt.date
+        .drop_duplicates()
+        .sort_values(ascending=False)
+        .tolist()
+    )
+
+    today = datetime.now(ZoneInfo("Asia/Singapore")).date()
+
+    streak = 0
+    expected = today
+
+    # If the user hasn't read today, allow the streak
+    # to continue from yesterday.
+    if expected not in dates:
+        expected = today - timedelta(days=1)
+
+    while expected in dates:
+        streak += 1
+        expected -= timedelta(days=1)
+
+    return streak
