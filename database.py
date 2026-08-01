@@ -3,6 +3,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 
+
 def get_sheet():
 
     SCOPES = [
@@ -46,6 +47,7 @@ def save_reading_session(
 
 
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import pandas as pd
 
 
@@ -60,31 +62,27 @@ def calculate_reading_streak(student_name):
 
     df = pd.DataFrame(records)
 
-    df = df[df["User"] == student_name]
+    # Remove blank rows
+    df = df.dropna(subset=["Date", "User"])
+
+    # Filter this student
+    df = df[df["User"].astype(str) == str(student_name)]
 
     if df.empty:
         return 0
 
-    dates = (
-        pd.to_datetime(df["Date"])
-        .dt.date
-        .drop_duplicates()
-        .sort_values(ascending=False)
-        .tolist()
-    )
+    dates = set(pd.to_datetime(df["Date"]).dt.date)
 
     today = datetime.now(ZoneInfo("Asia/Singapore")).date()
 
+    # If the student hasn't read today,
+    # continue counting from yesterday.
+    current = today if today in dates else today - timedelta(days=1)
+
     streak = 0
-    expected = today
 
-    # If the user hasn't read today, allow the streak
-    # to continue from yesterday.
-    if expected not in dates:
-        expected = today - timedelta(days=1)
-
-    while expected in dates:
+    while current in dates:
         streak += 1
-        expected -= timedelta(days=1)
+        current -= timedelta(days=1)
 
     return streak
