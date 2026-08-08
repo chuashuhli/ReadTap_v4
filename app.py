@@ -332,7 +332,7 @@ except Exception:
 # READTAP HEADER
 # ============================================================
 
-st.markdown(
+st.html(
     """
     <div class="readtap-title">
         📚 ReadTap
@@ -341,8 +341,7 @@ st.markdown(
     <div class="readtap-tagline">
         Small taps. Big reading adventures.
     </div>
-    """,
-    unsafe_allow_html=True
+    """
 )
 
 
@@ -352,7 +351,7 @@ st.markdown(
 
 last_book = user["current_book"]
 
-st.markdown(
+st.html(
     f"""
     <div class="welcome-card">
 
@@ -386,40 +385,35 @@ st.markdown(
         </div>
 
     </div>
-    """,
-    unsafe_allow_html=True
+    """
 )
-
 
 # ============================================================
 # TODAY'S READING
 # ============================================================
 
-st.markdown(
+st.html(
     """
     <div class="section-title">
         📖 Today's Reading
     </div>
-    """,
-    unsafe_allow_html=True
+    """
 )
 
-st.markdown(
+st.html(
     """
     <div class="goal-label">
         🎯 Daily Reading Goal
     </div>
-    """,
-    unsafe_allow_html=True
+    """
 )
 
-st.markdown(
+st.html(
     f"""
     <div class="goal-number">
         {today_total} / {goal} minutes
     </div>
-    """,
-    unsafe_allow_html=True
+    """
 )
 
 progress = min(today_total / goal, 1.0) if goal > 0 else 0
