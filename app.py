@@ -4,7 +4,14 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from database import save_reading_session, calculate_reading_streak
+from database import (
+    save_reading_session,
+    calculate_reading_streak,
+    start_reading_session,
+    get_current_reading,
+    finish_current_reading,
+    get_today_reading_minutes
+)
 
 st.set_page_config(page_title="ReadTap", page_icon="📚", layout="centered")
 
@@ -23,6 +30,10 @@ for k,v in {
 user_df = pd.read_csv("user.csv")
 user = user_df.iloc[0]
 streak = calculate_reading_streak(user["nickname"])
+
+today_total = get_today_reading_minutes(user["nickname"])
+goal = int(user["goal"])
+remaining = max(goal - today_total, 0)
 
 # ---------- Recent books ----------
 try:
@@ -98,11 +109,13 @@ if st.session_state.show_summary:
     st.write(s["end"])
     st.write("### ⏱ Reading Time")
     st.write(f"**{s['minutes']} minutes**")
-    if s["minutes"]>=int(user["goal"]):
-        st.success("🎯 Daily Goal Achieved!")
-    else:
-        st.info(f"{int(user['goal'])-s['minutes']} more minutes to reach your goal.")
-    if st.button("📚 Start Another Reading Session"):
+    if s["today_total"] >= s["goal"]:
+    st.success("🎯 Daily Goal Achieved!")
+    st.balloons()
+else:
+    st.info(
+        f"📚 {s['remaining']} more minutes to reach today's goal."
+    )    if st.button("📚 Start Another Reading Session"):
         st.session_state.show_summary=False
         st.rerun()
 
@@ -123,12 +136,20 @@ elif st.session_state.reading:
             end_time=end,
             minutes=minutes
         )
-        st.session_state.summary={
-            "book":st.session_state.current_book,
-            "start":st.session_state.start_time.strftime("%I:%M %p"),
-            "end":end.strftime("%I:%M %p"),
-            "minutes":minutes
-        }
+        # Calculate total reading time for today
+today_total = get_today_reading_minutes(user["nickname"])
+goal = int(user["goal"])
+remaining = max(goal - today_total, 0)
+
+st.session_state.summary={
+    "book":st.session_state.current_book,
+    "start":st.session_state.start_time.strftime("%I:%M %p"),
+    "end":end.strftime("%I:%M %p"),
+    "minutes":minutes,
+    "today_total":today_total,
+    "goal":goal,
+    "remaining":remaining
+}
         st.session_state.reading=False
         st.session_state.show_summary=True
         st.rerun()

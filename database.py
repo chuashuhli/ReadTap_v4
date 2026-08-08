@@ -2,9 +2,12 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+import pandas as pd
 
 
-def get_sheet():
+def get_sheet(sheet_name):
 
     SCOPES = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -18,7 +21,48 @@ def get_sheet():
 
     client = gspread.authorize(creds)
 
-    return client.open("Reading Logs").sheet1
+    spreadsheet = client.open("Reading Logs")
+
+    return spreadsheet.worksheet(sheet_name)
+
+
+def get_active_session(student_name):
+
+    sheet = get_sheet("Active Sessions")
+
+    records = sheet.get_all_records()
+
+    for i, row in enumerate(records, start=2):
+        if str(row["User"]) == str(student_name):
+            return {
+                "row": i,
+                "start": row["Start"],
+                "book": row["Book"]
+            }
+
+    return None
+
+def start_reading(
+    student_name,
+    nfc_id,
+    book_title,
+    start_time
+):
+
+    sheet = get_sheet("Active Sessions")
+
+    # Remove any previous active session
+    session = get_active_session(student_name)
+
+    if session:
+        sheet.delete_rows(session["row"])
+
+    sheet.append_row([
+        str(student_name),
+        str(nfc_id),
+        start_time.strftime("%Y-%m-%d %H:%M:%S"),
+        str(book_title)
+    ])
 
 
 
@@ -32,7 +76,7 @@ def save_reading_session(
     minutes
 ):
 
-    sheet = get_sheet()
+    sheet = get_sheet("Reading Logs")
 
     sheet.append_row([
         start_time.strftime("%Y-%m-%d"),
@@ -45,15 +89,9 @@ def save_reading_session(
         int(minutes)
     ])
 
-
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-import pandas as pd
-
-
 def calculate_reading_streak(student_name):
 
-    sheet = get_sheet()
+    sheet = get_sheet("Reading Logs")
 
     records = sheet.get_all_records()
 
@@ -86,3 +124,14 @@ def calculate_reading_streak(student_name):
         current -= timedelta(days=1)
 
     return streak
+
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+start_reading(
+    "SL",
+    "1001",
+    "Harry Potter",
+    datetime.now(ZoneInfo("Asia/Singapore"))
+)
