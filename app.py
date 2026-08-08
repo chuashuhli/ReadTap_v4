@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from textwrap import dedent
 
 from database import (
     save_reading_session,
@@ -22,14 +23,12 @@ st.set_page_config(
 
 
 # ============================================================
-# CUSTOM DESIGN
+# CUSTOM CSS
 # ============================================================
 
 st.markdown(
-    """
+    dedent("""
     <style>
-
-    /* ---------- Overall page ---------- */
 
     .stApp {
         background: #fffdf2;
@@ -41,12 +40,11 @@ st.markdown(
         padding-bottom: 4rem;
     }
 
-
-    /* ---------- Main title ---------- */
+    /* ---------------- HEADER ---------------- */
 
     .readtap-title {
         text-align: center;
-        font-size: 3.8rem;
+        font-size: 4rem;
         font-weight: 800;
         color: #26384a;
         margin-bottom: 0.2rem;
@@ -57,19 +55,19 @@ st.markdown(
         text-align: center;
         font-size: 1.25rem;
         color: #59636e;
-        margin-bottom: 2rem;
+        margin-bottom: 2.2rem;
     }
 
 
-    /* ---------- Welcome card ---------- */
+    /* ---------------- WELCOME CARD ---------------- */
 
     .welcome-card {
         background: #fff9df;
         border: 2px solid #e7dfc7;
         border-radius: 28px;
-        padding: 2rem 2rem 1.7rem 2rem;
+        padding: 2rem;
         text-align: center;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
         margin-bottom: 2rem;
     }
 
@@ -77,19 +75,19 @@ st.markdown(
         font-size: 2rem;
         font-weight: 700;
         color: #26384a;
-        margin-bottom: 0.8rem;
+        margin-bottom: 1rem;
     }
 
     .badge {
-        font-size: 1.25rem;
+        font-size: 1.2rem;
         color: #59636e;
-        margin-bottom: 1.3rem;
+        margin-bottom: 1.4rem;
     }
 
     .profile-line {
         font-size: 1.15rem;
         color: #59636e;
-        margin: 0.65rem 0;
+        margin: 0.7rem 0;
     }
 
     .profile-value {
@@ -98,7 +96,7 @@ st.markdown(
     }
 
 
-    /* ---------- Section headings ---------- */
+    /* ---------------- SECTION HEADINGS ---------------- */
 
     .section-title {
         font-size: 2rem;
@@ -109,19 +107,19 @@ st.markdown(
     }
 
 
-    /* ---------- Goal card ---------- */
+    /* ---------------- GOAL CARD ---------------- */
 
     .goal-card {
         background: #fff9df;
-        border-radius: 24px;
         border: 2px solid #e7dfc7;
+        border-radius: 24px;
         padding: 1.5rem 1.7rem;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.04);
+        margin-bottom: 1.2rem;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.04);
     }
 
     .goal-title {
-        font-size: 1.4rem;
+        font-size: 1.3rem;
         font-weight: 700;
         color: #26384a;
         margin-bottom: 0.5rem;
@@ -133,14 +131,8 @@ st.markdown(
         color: #26384a;
     }
 
-    .goal-remaining {
-        font-size: 1.1rem;
-        margin-top: 0.8rem;
-        color: #59636e;
-    }
 
-
-    /* ---------- Book section ---------- */
+    /* ---------------- BOOK CARD ---------------- */
 
     .book-card {
         background: white;
@@ -148,18 +140,17 @@ st.markdown(
         border-radius: 24px;
         padding: 1.5rem 1.7rem;
         margin-bottom: 1.5rem;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.04);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.04);
     }
 
 
-    /* ---------- Reading card ---------- */
+    /* ---------------- READING CARD ---------------- */
 
     .reading-card {
         background: #fff9df;
         border: 2px solid #e7dfc7;
         border-radius: 24px;
         padding: 1.7rem;
-        margin-top: 1rem;
         margin-bottom: 1.5rem;
     }
 
@@ -171,7 +162,7 @@ st.markdown(
     }
 
 
-    /* ---------- Completion card ---------- */
+    /* ---------------- COMPLETE CARD ---------------- */
 
     .complete-card {
         background: #eafff0;
@@ -188,15 +179,8 @@ st.markdown(
         color: #245c3a;
     }
 
-    .complete-total {
-        font-size: 1.4rem;
-        font-weight: 700;
-        color: #245c3a;
-        margin-top: 0.5rem;
-    }
 
-
-    /* ---------- Buttons ---------- */
+    /* ---------------- BUTTONS ---------------- */
 
     .stButton > button {
         width: 100%;
@@ -207,23 +191,16 @@ st.markdown(
     }
 
 
-    /* ---------- Radio buttons ---------- */
-
-    div[role="radiogroup"] {
-        gap: 0.5rem;
-    }
-
-
-    /* ---------- Divider ---------- */
+    /* ---------------- DIVIDER ---------------- */
 
     hr {
+        border-color: #e7dfc7;
         margin-top: 1.5rem;
         margin-bottom: 1.5rem;
-        border-color: #e7dfc7;
     }
 
     </style>
-    """,
+    """),
     unsafe_allow_html=True
 )
 
@@ -295,14 +272,15 @@ except Exception:
 # ============================================================
 
 st.markdown(
-    '<div class="readtap-title">📚 ReadTap</div>',
-    unsafe_allow_html=True
-)
+    dedent("""
+    <div class="readtap-title">
+        📚 ReadTap
+    </div>
 
-st.markdown(
-    '<div class="readtap-subtitle">'
-    'Small taps. Big reading adventures.'
-    '</div>',
+    <div class="readtap-subtitle">
+        Small taps. Big reading adventures.
+    </div>
+    """),
     unsafe_allow_html=True
 )
 
@@ -312,7 +290,7 @@ st.markdown(
 # ============================================================
 
 st.markdown(
-    f"""
+    dedent(f"""
     <div class="welcome-card">
 
         <div class="welcome-name">
@@ -345,7 +323,7 @@ st.markdown(
         </div>
 
     </div>
-    """,
+    """),
     unsafe_allow_html=True
 )
 
@@ -360,7 +338,7 @@ st.markdown(
 )
 
 st.markdown(
-    f"""
+    dedent(f"""
     <div class="goal-card">
 
         <div class="goal-title">
@@ -372,7 +350,7 @@ st.markdown(
         </div>
 
     </div>
-    """,
+    """),
     unsafe_allow_html=True
 )
 
@@ -397,7 +375,6 @@ else:
         "to reach today's goal."
     )
 
-
 st.divider()
 
 
@@ -410,19 +387,15 @@ if st.session_state.show_summary:
     summary = st.session_state.summary
 
     st.markdown(
-        """
+        dedent("""
         <div class="complete-card">
 
             <div class="complete-title">
                 🎉 Reading Complete!
             </div>
 
-            <div class="complete-total">
-                Great job!
-            </div>
-
         </div>
-        """,
+        """),
         unsafe_allow_html=True
     )
 
@@ -444,7 +417,7 @@ if st.session_state.show_summary:
     )
 
     st.markdown(
-        f"""
+        dedent(f"""
         <div class="goal-card">
 
             <div class="goal-title">
@@ -452,12 +425,12 @@ if st.session_state.show_summary:
             </div>
 
             <div class="goal-number">
-                {summary['today_total']}
-                / {summary['goal']} minutes
+                {summary['today_total']} /
+                {summary['goal']} minutes
             </div>
 
         </div>
-        """,
+        """),
         unsafe_allow_html=True
     )
 
@@ -497,7 +470,7 @@ elif st.session_state.reading:
     )
 
     st.markdown(
-        f"""
+        dedent(f"""
         <div class="reading-card">
 
             <div class="reading-book">
@@ -512,7 +485,7 @@ elif st.session_state.reading:
             </div>
 
         </div>
-        """,
+        """),
         unsafe_allow_html=True
     )
 
@@ -531,10 +504,7 @@ elif st.session_state.reading:
             ).total_seconds() / 60
         )
 
-        # ----------------------------------------------------
-        # SAVE SESSION
-        # ----------------------------------------------------
-
+        # Save completed session
         save_reading_session(
             student_name=user["nickname"],
             nfc_id=user["nfc_id"],
@@ -545,10 +515,7 @@ elif st.session_state.reading:
             minutes=minutes
         )
 
-        # ----------------------------------------------------
-        # V2 CUMULATIVE DAILY TOTAL
-        # ----------------------------------------------------
-
+        # V2 cumulative daily total
         today_total = get_today_reading_minutes(
             user["nickname"]
         )
@@ -560,36 +527,19 @@ elif st.session_state.reading:
             0
         )
 
-        # ----------------------------------------------------
-        # SAVE SUMMARY
-        # ----------------------------------------------------
-
+        # Save summary
         st.session_state.summary = {
-
-            "book":
-                st.session_state.current_book,
-
-            "start":
-                st.session_state.start_time.strftime(
-                    "%I:%M %p"
-                ),
-
-            "end":
-                end.strftime(
-                    "%I:%M %p"
-                ),
-
-            "minutes":
-                minutes,
-
-            "today_total":
-                today_total,
-
-            "goal":
-                goal,
-
-            "remaining":
-                remaining
+            "book": st.session_state.current_book,
+            "start": st.session_state.start_time.strftime(
+                "%I:%M %p"
+            ),
+            "end": end.strftime(
+                "%I:%M %p"
+            ),
+            "minutes": minutes,
+            "today_total": today_total,
+            "goal": goal,
+            "remaining": remaining
         }
 
         st.session_state.reading = False
@@ -613,7 +563,9 @@ else:
     )
 
     st.markdown(
-        '<div class="book-card">',
+        dedent("""
+        <div class="book-card">
+        """),
         unsafe_allow_html=True
     )
 
@@ -656,7 +608,7 @@ else:
             )
 
     st.markdown(
-        '</div>',
+        "</div>",
         unsafe_allow_html=True
     )
 
