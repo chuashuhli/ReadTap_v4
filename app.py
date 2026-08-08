@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from textwrap import dedent
 
 from database import (
     save_reading_session,
@@ -27,180 +26,143 @@ st.set_page_config(
 # ============================================================
 
 st.markdown(
-    dedent("""
-    <style>
+    """
+<style>
 
-    .stApp {
-        background: #fffdf2;
-    }
+/* =========================
+   PAGE
+   ========================= */
 
-    .main .block-container {
-        max-width: 850px;
-        padding-top: 2rem;
-        padding-bottom: 4rem;
-    }
+.stApp {
+    background-color: #fffdf2;
+}
 
-    /* ---------------- HEADER ---------------- */
-
-    .readtap-title {
-        text-align: center;
-        font-size: 4rem;
-        font-weight: 800;
-        color: #26384a;
-        margin-bottom: 0.2rem;
-        letter-spacing: -2px;
-    }
-
-    .readtap-subtitle {
-        text-align: center;
-        font-size: 1.25rem;
-        color: #59636e;
-        margin-bottom: 2.2rem;
-    }
+.main .block-container {
+    max-width: 850px;
+    padding-top: 2rem;
+    padding-bottom: 4rem;
+}
 
 
-    /* ---------------- WELCOME CARD ---------------- */
+/* =========================
+   TITLE
+   ========================= */
 
-    .welcome-card {
-        background: #fff9df;
-        border: 2px solid #e7dfc7;
-        border-radius: 28px;
-        padding: 2rem;
-        text-align: center;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
-        margin-bottom: 2rem;
-    }
+.readtap-title {
+    text-align: center;
+    font-size: 4rem;
+    font-weight: 800;
+    color: #26384a;
+    margin-bottom: 0.2rem;
+}
 
-    .welcome-name {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #26384a;
-        margin-bottom: 1rem;
-    }
-
-    .badge {
-        font-size: 1.2rem;
-        color: #59636e;
-        margin-bottom: 1.4rem;
-    }
-
-    .profile-line {
-        font-size: 1.15rem;
-        color: #59636e;
-        margin: 0.7rem 0;
-    }
-
-    .profile-value {
-        font-weight: 700;
-        color: #414141;
-    }
+.readtap-subtitle {
+    text-align: center;
+    font-size: 1.25rem;
+    color: #59636e;
+    margin-bottom: 2rem;
+}
 
 
-    /* ---------------- SECTION HEADINGS ---------------- */
+/* =========================
+   CARDS
+   ========================= */
 
-    .section-title {
-        font-size: 2rem;
-        font-weight: 800;
-        color: #26384a;
-        margin-top: 1.5rem;
-        margin-bottom: 1rem;
-    }
-
-
-    /* ---------------- GOAL CARD ---------------- */
-
-    .goal-card {
-        background: #fff9df;
-        border: 2px solid #e7dfc7;
-        border-radius: 24px;
-        padding: 1.5rem 1.7rem;
-        margin-bottom: 1.2rem;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.04);
-    }
-
-    .goal-title {
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: #26384a;
-        margin-bottom: 0.5rem;
-    }
-
-    .goal-number {
-        font-size: 2rem;
-        font-weight: 800;
-        color: #26384a;
-    }
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background-color: #fff9df;
+    border: 2px solid #e7dfc7;
+    border-radius: 24px;
+    padding: 1.2rem;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.05);
+}
 
 
-    /* ---------------- BOOK CARD ---------------- */
+/* =========================
+   WELCOME CARD
+   ========================= */
 
-    .book-card {
-        background: white;
-        border: 2px solid #e7dfc7;
-        border-radius: 24px;
-        padding: 1.5rem 1.7rem;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.04);
-    }
+.welcome-name {
+    text-align: center;
+    font-size: 2rem;
+    font-weight: 800;
+    color: #26384a;
+}
 
+.welcome-badge {
+    text-align: center;
+    font-size: 1.2rem;
+    color: #59636e;
+    margin-top: 0.5rem;
+    margin-bottom: 1.5rem;
+}
 
-    /* ---------------- READING CARD ---------------- */
+.profile-line {
+    text-align: center;
+    font-size: 1.15rem;
+    color: #59636e;
+    margin: 0.8rem 0;
+}
 
-    .reading-card {
-        background: #fff9df;
-        border: 2px solid #e7dfc7;
-        border-radius: 24px;
-        padding: 1.7rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .reading-book {
-        font-size: 1.8rem;
-        font-weight: 800;
-        color: #26384a;
-        margin-bottom: 0.8rem;
-    }
-
-
-    /* ---------------- COMPLETE CARD ---------------- */
-
-    .complete-card {
-        background: #eafff0;
-        border: 2px solid #b8e4c7;
-        border-radius: 24px;
-        padding: 1.8rem;
-        text-align: center;
-        margin-bottom: 1.5rem;
-    }
-
-    .complete-title {
-        font-size: 2rem;
-        font-weight: 800;
-        color: #245c3a;
-    }
+.profile-value {
+    font-weight: 700;
+    color: #414141;
+}
 
 
-    /* ---------------- BUTTONS ---------------- */
+/* =========================
+   SECTION HEADINGS
+   ========================= */
 
-    .stButton > button {
-        width: 100%;
-        border-radius: 18px;
-        min-height: 3.2rem;
-        font-size: 1.1rem;
-        font-weight: 700;
-    }
+.section-title {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #26384a;
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+}
 
 
-    /* ---------------- DIVIDER ---------------- */
+/* =========================
+   GOAL NUMBER
+   ========================= */
 
-    hr {
-        border-color: #e7dfc7;
-        margin-top: 1.5rem;
-        margin-bottom: 1.5rem;
-    }
+.goal-number {
+    text-align: center;
+    font-size: 2rem;
+    font-weight: 800;
+    color: #26384a;
+}
 
-    </style>
-    """),
+.goal-label {
+    text-align: center;
+    font-size: 1.1rem;
+    color: #59636e;
+}
+
+
+/* =========================
+   BUTTONS
+   ========================= */
+
+.stButton > button {
+    width: 100%;
+    min-height: 3.2rem;
+    border-radius: 18px;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+
+/* =========================
+   DIVIDER
+   ========================= */
+
+hr {
+    border-color: #e7dfc7;
+}
+
+</style>
+""",
     unsafe_allow_html=True
 )
 
@@ -272,15 +234,14 @@ except Exception:
 # ============================================================
 
 st.markdown(
-    dedent("""
-    <div class="readtap-title">
-        📚 ReadTap
-    </div>
+    '<div class="readtap-title">📚 ReadTap</div>',
+    unsafe_allow_html=True
+)
 
-    <div class="readtap-subtitle">
-        Small taps. Big reading adventures.
-    </div>
-    """),
+st.markdown(
+    '<div class="readtap-subtitle">'
+    'Small taps. Big reading adventures.'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -289,91 +250,101 @@ st.markdown(
 # WELCOME CARD
 # ============================================================
 
-st.markdown(
-    dedent(f"""
-    <div class="welcome-card">
+with st.container(border=True):
 
-        <div class="welcome-name">
-            👋 Welcome back, {user['nickname']}!
-        </div>
+    st.markdown(
+        '<div class="welcome-name">'
+        f'👋 Welcome back, {user["nickname"]}!'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
-        <div class="badge">
-            🏅 📚 ReadTap Explorer
-        </div>
+    st.markdown(
+        '<div class="welcome-badge">'
+        '🏅 📚 ReadTap Explorer'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
-        <div class="profile-line">
-            📖 Last Book:
-            <span class="profile-value">
-                {user['current_book']}
-            </span>
-        </div>
+    st.markdown(
+        '<div class="profile-line">'
+        '📖 Last Book: '
+        f'<span class="profile-value">'
+        f'{user["current_book"]}'
+        '</span>'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
-        <div class="profile-line">
-            🎯 Daily Goal:
-            <span class="profile-value">
-                {goal} mins
-            </span>
-        </div>
+    st.markdown(
+        '<div class="profile-line">'
+        '🎯 Daily Goal: '
+        f'<span class="profile-value">'
+        f'{goal} mins'
+        '</span>'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
-        <div class="profile-line">
-            🔥 Reading Streak:
-            <span class="profile-value">
-                {streak} days
-            </span>
-        </div>
-
-    </div>
-    """),
-    unsafe_allow_html=True
-)
+    st.markdown(
+        '<div class="profile-line">'
+        '🔥 Reading Streak: '
+        f'<span class="profile-value">'
+        f'{streak} days'
+        '</span>'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
 
 # ============================================================
-# TODAY'S PROGRESS
+# TODAY'S READING
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">📖 Today\'s Reading</div>',
+    '<div class="section-title">'
+    '📖 Today\'s Reading'
+    '</div>',
     unsafe_allow_html=True
 )
 
-st.markdown(
-    dedent(f"""
-    <div class="goal-card">
+with st.container(border=True):
 
-        <div class="goal-title">
-            🎯 Daily Reading Goal
-        </div>
-
-        <div class="goal-number">
-            {today_total} / {goal} minutes
-        </div>
-
-    </div>
-    """),
-    unsafe_allow_html=True
-)
-
-progress = (
-    min(today_total / goal, 1.0)
-    if goal > 0
-    else 0
-)
-
-st.progress(progress)
-
-if today_total >= goal:
-
-    st.success(
-        "🎯 Daily Goal Achieved! Amazing reading today!"
+    st.markdown(
+        '<div class="goal-label">'
+        '🎯 Daily Reading Goal'
+        '</div>',
+        unsafe_allow_html=True
     )
 
-else:
-
-    st.info(
-        f"📚 {remaining} more minutes "
-        "to reach today's goal."
+    st.markdown(
+        '<div class="goal-number">'
+        f'{today_total} / {goal} minutes'
+        '</div>',
+        unsafe_allow_html=True
     )
+
+    progress = (
+        min(today_total / goal, 1.0)
+        if goal > 0
+        else 0
+    )
+
+    st.progress(progress)
+
+    if today_total >= goal:
+
+        st.success(
+            "🎯 Daily Goal Achieved! Amazing reading today!"
+        )
+
+    else:
+
+        st.info(
+            f"📚 {remaining} more minutes "
+            "to reach today's goal."
+        )
+
 
 st.divider()
 
@@ -386,17 +357,8 @@ if st.session_state.show_summary:
 
     summary = st.session_state.summary
 
-    st.markdown(
-        dedent("""
-        <div class="complete-card">
-
-            <div class="complete-title">
-                🎉 Reading Complete!
-            </div>
-
-        </div>
-        """),
-        unsafe_allow_html=True
+    st.success(
+        "🎉 Reading Complete!"
     )
 
     st.markdown(
@@ -416,23 +378,34 @@ if st.session_state.show_summary:
         f"{summary['minutes']} minutes"
     )
 
-    st.markdown(
-        dedent(f"""
-        <div class="goal-card">
+    with st.container(border=True):
 
-            <div class="goal-title">
-                📖 Today's Reading
-            </div>
+        st.markdown(
+            '<div class="goal-label">'
+            '📖 Total Reading Today'
+            '</div>',
+            unsafe_allow_html=True
+        )
 
-            <div class="goal-number">
-                {summary['today_total']} /
-                {summary['goal']} minutes
-            </div>
+        st.markdown(
+            '<div class="goal-number">'
+            f'{summary["today_total"]} / '
+            f'{summary["goal"]} minutes'
+            '</div>',
+            unsafe_allow_html=True
+        )
 
-        </div>
-        """),
-        unsafe_allow_html=True
-    )
+        summary_progress = (
+            min(
+                summary["today_total"]
+                / summary["goal"],
+                1.0
+            )
+            if summary["goal"] > 0
+            else 0
+        )
+
+        st.progress(summary_progress)
 
     if summary["today_total"] >= summary["goal"]:
 
@@ -445,7 +418,7 @@ if st.session_state.show_summary:
     else:
 
         st.info(
-            f"📚 {summary['remaining']} more minutes "
+            f'📚 {summary["remaining"]} more minutes '
             "to reach today's goal."
         )
 
@@ -465,29 +438,22 @@ if st.session_state.show_summary:
 elif st.session_state.reading:
 
     st.markdown(
-        '<div class="section-title">📖 Reading Now</div>',
+        '<div class="section-title">'
+        '📖 Reading Now'
+        '</div>',
         unsafe_allow_html=True
     )
 
-    st.markdown(
-        dedent(f"""
-        <div class="reading-card">
+    with st.container(border=True):
 
-            <div class="reading-book">
-                📚 {st.session_state.current_book}
-            </div>
+        st.markdown(
+            f"## 📚 {st.session_state.current_book}"
+        )
 
-            <div>
-                🕒 Started at
-                <strong>
-                    {st.session_state.start_time.strftime('%I:%M %p')}
-                </strong>
-            </div>
-
-        </div>
-        """),
-        unsafe_allow_html=True
-    )
+        st.write(
+            "🕒 Started at "
+            f"**{st.session_state.start_time.strftime('%I:%M %p')}**"
+        )
 
     if st.button(
         "✅ Finish Reading"
@@ -504,7 +470,10 @@ elif st.session_state.reading:
             ).total_seconds() / 60
         )
 
-        # Save completed session
+        # ----------------------------------------------------
+        # SAVE SESSION
+        # ----------------------------------------------------
+
         save_reading_session(
             student_name=user["nickname"],
             nfc_id=user["nfc_id"],
@@ -515,7 +484,10 @@ elif st.session_state.reading:
             minutes=minutes
         )
 
-        # V2 cumulative daily total
+        # ----------------------------------------------------
+        # V2 CUMULATIVE TOTAL
+        # ----------------------------------------------------
+
         today_total = get_today_reading_minutes(
             user["nickname"]
         )
@@ -527,19 +499,36 @@ elif st.session_state.reading:
             0
         )
 
-        # Save summary
+        # ----------------------------------------------------
+        # SUMMARY
+        # ----------------------------------------------------
+
         st.session_state.summary = {
-            "book": st.session_state.current_book,
-            "start": st.session_state.start_time.strftime(
-                "%I:%M %p"
-            ),
-            "end": end.strftime(
-                "%I:%M %p"
-            ),
-            "minutes": minutes,
-            "today_total": today_total,
-            "goal": goal,
-            "remaining": remaining
+
+            "book":
+                st.session_state.current_book,
+
+            "start":
+                st.session_state.start_time.strftime(
+                    "%I:%M %p"
+                ),
+
+            "end":
+                end.strftime(
+                    "%I:%M %p"
+                ),
+
+            "minutes":
+                minutes,
+
+            "today_total":
+                today_total,
+
+            "goal":
+                goal,
+
+            "remaining":
+                remaining
         }
 
         st.session_state.reading = False
@@ -562,55 +551,45 @@ else:
         unsafe_allow_html=True
     )
 
-    st.markdown(
-        dedent("""
-        <div class="book-card">
-        """),
-        unsafe_allow_html=True
-    )
+    with st.container(border=True):
 
-    option = st.radio(
-        "Choose an option",
-        (
-            "Continue previous book",
-            "Start a new book"
-        )
-    )
-
-    if option == "Continue previous book":
-
-        book = user["current_book"]
-
-        st.info(
-            f"📖 Continuing: **{book}**"
+        option = st.radio(
+            "Choose an option",
+            (
+                "Continue previous book",
+                "Start a new book"
+            )
         )
 
-    else:
+        if option == "Continue previous book":
 
-        default = (
-            recent_books[-1]
-            if recent_books
-            else ""
-        )
+            book = user["current_book"]
 
-        book = st.text_input(
-            "Book title",
-            value=default
-        )
-
-        if recent_books:
-
-            st.caption(
-                "📚 Recent books: "
-                + ", ".join(
-                    reversed(recent_books)
-                )
+            st.info(
+                f"📖 Continuing: **{book}**"
             )
 
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True
-    )
+        else:
+
+            default = (
+                recent_books[-1]
+                if recent_books
+                else ""
+            )
+
+            book = st.text_input(
+                "Book title",
+                value=default
+            )
+
+            if recent_books:
+
+                st.caption(
+                    "📚 Recent books: "
+                    + ", ".join(
+                        reversed(recent_books)
+                    )
+                )
 
     if st.button(
         "📖 Start Reading"
