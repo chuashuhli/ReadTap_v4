@@ -1,10 +1,55 @@
 import streamlit as st
 import gspread
-from google.oauth2.service_account import Credentials
 
+from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import pandas as pd
+
+
+# ============================================================
+# TIMEZONE
+# ============================================================
+
+SGT = ZoneInfo("Asia/Singapore")
+
+
+def make_sgt(dt):
+    """
+    Make sure a datetime is timezone-aware and in Singapore time.
+
+    Handles both:
+    - timezone-aware datetime
+    - timezone-naive datetime
+    """
+
+    if dt is None:
+        return None
+
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=SGT)
+
+    return dt.astimezone(SGT)
+
+
+def parse_sgt(value):
+    """
+    Convert a stored Google Sheets datetime string
+    into a Singapore timezone-aware datetime.
+    """
+
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        return make_sgt(value)
+
+    dt = datetime.strptime(
+        str(value),
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    return dt.replace(tzinfo=SGT)
 
 
 # ============================================================
@@ -45,22 +90,28 @@ def get_active_session(student_name):
 
     for i, row in enumerate(records, start=2):
 
-        if str(row.get("User", "")) == str(student_name):
+        if str(row.get("User", "")) != str(student_name):
+            continue
 
-            status = str(row.get("Status", "active")).lower()
+        status = str(
+            row.get("Status", "")
+        ).lower().strip()
 
-            if status in ["active", "awaiting_confirmation"]:
+        if status in [
+            "active",
+            "awaiting_confirmation"
+        ]:
 
-                return {
-                    "row": i,
-                    "user": row.get("User", ""),
-                    "nfc": row.get("NFC", ""),
-                    "start": row.get("Start", ""),
-                    "book": row.get("Book", ""),
-                    "end": row.get("End", ""),
-                    "minutes": row.get("Minutes", ""),
-                    "status": status
-                }
+            return {
+                "row": i,
+                "user": row.get("User", ""),
+                "nfc": row.get("NFC", ""),
+                "start": row.get("Start", ""),
+                "book": row.get("Book", ""),
+                "end": row.get("End", ""),
+                "minutes": row.get("Minutes", ""),
+                "status": status
+            }
 
     return None
 
@@ -78,16 +129,21 @@ def start_reading(
 
     sheet = get_sheet("Active Sessions")
 
-    # Check for an existing session
+    # Check whether this student already has a session
     existing = get_active_session(student_name)
 
     if existing:
         return False
 
+    # Make sure start time is Singapore time
+    start_time = make_sgt(start_time)
+
     sheet.append_row([
         str(student_name),
         str(nfc_id),
-        start_time.strftime("%Y-%m-%d %H:%M:%S"),
+        start_time.strftime(
+            "%Y-%m-%d %H:%M:%S"
+        ),
         str(book_title),
         "",
         "",
@@ -101,40 +157,92 @@ def start_reading(
 # STOP READING
 # ============================================================
 
-def stop_reading(student_name, end_time):
+def stop_reading(
+    student_name,
+    end_time
+):
+
     sheet = get_sheet("Active Sessions")
 
     records = sheet.get_all_records()
 
+    if not records:
+        return None
+
+    # Make sure end time is Singapore time
+    end_time = make_sgt(end_time)
+
     for i, row in enumerate(records, start=2):
 
-        if str(row["User"]) == str(student_name):
+        if str(row.get("User", "")) != str(student_name):
+            continue
 
-            # Get the stored start time
-            start_time = datetime.strptime(
-                row["Start"],
+        status = str(
+            row.get("Status", "")
+        ).lower().strip()
+
+        # Only stop an actually active session
+        if status != "active":
+            continue
+
+        # ----------------------------------------------------
+        # Get stored start time
+        # ----------------------------------------------------
+
+        start_time = parse_sgt(
+            row.get("Start", "")
+        )
+
+        if start_time is None:
+            return None
+
+        # ----------------------------------------------------
+        # Calculate duration
+        # ----------------------------------------------------
+
+        seconds = (
+            end_time - start_time
+        ).total_seconds()
+
+        minutes = round(
+            seconds / 60
+        )
+
+        # Prevent negative values
+        if minutes < 0:
+            minutes = 0
+
+        # ----------------------------------------------------
+        # IMPORTANT:
+        # DO NOT DELETE THE ROW.
+        #
+        # We need to keep it so the user can confirm
+        # or change the book title.
+        # ----------------------------------------------------
+
+        sheet.update(
+            f"E{i}",
+            end_time.strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
+        )
 
-            # Make sure the stored time uses Singapore timezone
-            start_time = start_time.replace(
-                tzinfo=ZoneInfo("Asia/Singapore")
-            )
+        sheet.update(
+            f"F{i}",
+            minutes
+        )
 
-            # Calculate reading duration
-            minutes = round(
-                (end_time - start_time).total_seconds() / 60
-            )
+        sheet.update(
+            f"G{i}",
+            "awaiting_confirmation"
+        )
 
-            # Delete active session
-            sheet.delete_rows(i)
-
-            return {
-                "book": row["Book"],
-                "start": start_time,
-                "end": end_time,
-                "minutes": minutes
-            }
+        return {
+            "book": row.get("Book", ""),
+            "start": start_time,
+            "end": end_time,
+            "minutes": minutes
+        }
 
     return None
 
@@ -148,11 +256,17 @@ def finish_reading(
     final_book_title
 ):
 
-    active_sheet = get_sheet("Active Sessions")
+    active_sheet = get_sheet(
+        "Active Sessions"
+    )
 
-    reading_sheet = get_sheet("Reading Logs")
+    reading_sheet = get_sheet(
+        "Reading Logs"
+    )
 
-    session = get_active_session(student_name)
+    session = get_active_session(
+        student_name
+    )
 
     if not session:
         return None
@@ -161,30 +275,49 @@ def finish_reading(
     if session["status"] != "awaiting_confirmation":
         return None
 
-    # Use original book if no replacement was entered
-    book = final_book_title.strip()
+    # --------------------------------------------------------
+    # Determine final book
+    # --------------------------------------------------------
 
+    book = str(
+        final_book_title or ""
+    ).strip()
+
+    # If user left the box empty,
+    # keep the original book.
     if not book:
-        book = str(session["book"])
-
-    # Parse start/end
-    start_time = datetime.strptime(
-        session["start"],
-        "%Y-%m-%d %H:%M:%S"
-    )
-
-    end_time = datetime.strptime(
-        session["end"],
-        "%Y-%m-%d %H:%M:%S"
-    )
-
-    minutes = int(session["minutes"])
+        book = str(
+            session["book"]
+        )
 
     # --------------------------------------------------------
-    # Get student information from user.csv
+    # Parse start/end times
     # --------------------------------------------------------
 
-    user_df = pd.read_csv("user.csv")
+    start_time = parse_sgt(
+        session["start"]
+    )
+
+    end_time = parse_sgt(
+        session["end"]
+    )
+
+    if start_time is None or end_time is None:
+        return None
+
+    minutes = int(
+        float(
+            session["minutes"] or 0
+        )
+    )
+
+    # --------------------------------------------------------
+    # Get student information
+    # --------------------------------------------------------
+
+    user_df = pd.read_csv(
+        "user.csv"
+    )
 
     user = user_df[
         user_df["nickname"].astype(str)
@@ -201,13 +334,19 @@ def finish_reading(
     # --------------------------------------------------------
 
     reading_sheet.append_row([
-        start_time.strftime("%Y-%m-%d"),
+        start_time.strftime(
+            "%Y-%m-%d"
+        ),
         str(student_name),
         str(user["nfc_id"]),
         str(user["class"]),
         str(book),
-        start_time.strftime("%H:%M:%S"),
-        end_time.strftime("%H:%M:%S"),
+        start_time.strftime(
+            "%H:%M:%S"
+        ),
+        end_time.strftime(
+            "%H:%M:%S"
+        ),
         minutes
     ])
 
@@ -227,7 +366,7 @@ def finish_reading(
     )
 
     # --------------------------------------------------------
-    # Delete active session
+    # Now delete the temporary active session
     # --------------------------------------------------------
 
     active_sheet.delete_rows(
@@ -246,9 +385,13 @@ def finish_reading(
 # TODAY'S READING
 # ============================================================
 
-def get_today_reading_minutes(student_name):
+def get_today_reading_minutes(
+    student_name
+):
 
-    sheet = get_sheet("Reading Logs")
+    sheet = get_sheet(
+        "Reading Logs"
+    )
 
     records = sheet.get_all_records()
 
@@ -264,7 +407,10 @@ def get_today_reading_minutes(student_name):
         return 0
 
     df = df.dropna(
-        subset=["Date", "User"]
+        subset=[
+            "Date",
+            "User"
+        ]
     )
 
     df = df[
@@ -276,7 +422,7 @@ def get_today_reading_minutes(student_name):
         return 0
 
     today = datetime.now(
-        ZoneInfo("Asia/Singapore")
+        SGT
     ).date()
 
     df["Date"] = pd.to_datetime(
@@ -296,16 +442,22 @@ def get_today_reading_minutes(student_name):
         errors="coerce"
     ).fillna(0).sum()
 
-    return int(total_minutes)
+    return int(
+        total_minutes
+    )
 
 
 # ============================================================
 # READING STREAK
 # ============================================================
 
-def calculate_reading_streak(student_name):
+def calculate_reading_streak(
+    student_name
+):
 
-    sheet = get_sheet("Reading Logs")
+    sheet = get_sheet(
+        "Reading Logs"
+    )
 
     records = sheet.get_all_records()
 
@@ -314,8 +466,17 @@ def calculate_reading_streak(student_name):
 
     df = pd.DataFrame(records)
 
+    if "Date" not in df.columns:
+        return 0
+
+    if "User" not in df.columns:
+        return 0
+
     df = df.dropna(
-        subset=["Date", "User"]
+        subset=[
+            "Date",
+            "User"
+        ]
     )
 
     df = df[
@@ -330,11 +491,11 @@ def calculate_reading_streak(student_name):
         pd.to_datetime(
             df["Date"],
             errors="coerce"
-        ).dt.date
+        ).dt.date.dropna()
     )
 
     today = datetime.now(
-        ZoneInfo("Asia/Singapore")
+        SGT
     ).date()
 
     current = (
@@ -349,6 +510,8 @@ def calculate_reading_streak(student_name):
 
         streak += 1
 
-        current -= timedelta(days=1)
+        current -= timedelta(
+            days=1
+        )
 
     return streak
