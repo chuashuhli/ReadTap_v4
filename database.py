@@ -1,10 +1,10 @@
 import streamlit as st
 import gspread
-import pandas as pd
-
 from google.oauth2.service_account import Credentials
+
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+import pandas as pd
 
 
 # ============================================================
@@ -31,35 +31,244 @@ def get_sheet(sheet_name):
 
 
 # ============================================================
-# SAVE COMPLETED READING SESSION
+# GET ACTIVE SESSION
 # ============================================================
 
-def save_reading_session(
+def get_active_session(student_name):
+
+    sheet = get_sheet("Active Sessions")
+
+    records = sheet.get_all_records()
+
+    if not records:
+        return None
+
+    for i, row in enumerate(records, start=2):
+
+        if str(row.get("User", "")) == str(student_name):
+
+            status = str(row.get("Status", "active")).lower()
+
+            if status in ["active", "awaiting_confirmation"]:
+
+                return {
+                    "row": i,
+                    "user": row.get("User", ""),
+                    "nfc": row.get("NFC", ""),
+                    "start": row.get("Start", ""),
+                    "book": row.get("Book", ""),
+                    "end": row.get("End", ""),
+                    "minutes": row.get("Minutes", ""),
+                    "status": status
+                }
+
+    return None
+
+
+# ============================================================
+# START READING
+# ============================================================
+
+def start_reading(
     student_name,
     nfc_id,
-    student_class,
     book_title,
-    start_time,
-    end_time,
-    minutes
+    start_time
 ):
 
-    sheet = get_sheet("Reading Logs")
+    sheet = get_sheet("Active Sessions")
+
+    # Check for an existing session
+    existing = get_active_session(student_name)
+
+    if existing:
+        return False
 
     sheet.append_row([
-        start_time.strftime("%Y-%m-%d"),
         str(student_name),
         str(nfc_id),
-        str(student_class),
+        start_time.strftime("%Y-%m-%d %H:%M:%S"),
         str(book_title),
-        start_time.strftime("%H:%M:%S"),
-        end_time.strftime("%H:%M:%S"),
-        int(minutes)
+        "",
+        "",
+        "active"
     ])
+
+    return True
 
 
 # ============================================================
-# V2: GET TODAY'S TOTAL READING TIME
+# STOP READING
+# ============================================================
+
+def stop_reading(student_name, end_time):
+
+    sheet = get_sheet("Active Sessions")
+
+    session = get_active_session(student_name)
+
+    if not session:
+        return None
+
+    # If already waiting for book confirmation,
+    # don't stop it again.
+    if session["status"] == "awaiting_confirmation":
+
+        return session
+
+    start_time = datetime.strptime(
+        session["start"],
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    minutes = round(
+        (
+            end_time - start_time
+        ).total_seconds() / 60
+    )
+
+    # Prevent negative values
+    minutes = max(minutes, 0)
+
+    row = session["row"]
+
+    # Update End
+    sheet.update_cell(
+        row,
+        5,
+        end_time.strftime("%Y-%m-%d %H:%M:%S")
+    )
+
+    # Update Minutes
+    sheet.update_cell(
+        row,
+        6,
+        int(minutes)
+    )
+
+    # Update Status
+    sheet.update_cell(
+        row,
+        7,
+        "awaiting_confirmation"
+    )
+
+    session["end"] = end_time.strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    session["minutes"] = int(minutes)
+
+    session["status"] = "awaiting_confirmation"
+
+    return session
+
+
+# ============================================================
+# FINISH / CONFIRM READING
+# ============================================================
+
+def finish_reading(
+    student_name,
+    final_book_title
+):
+
+    active_sheet = get_sheet("Active Sessions")
+
+    reading_sheet = get_sheet("Reading Logs")
+
+    session = get_active_session(student_name)
+
+    if not session:
+        return None
+
+    # Only finalize a stopped session
+    if session["status"] != "awaiting_confirmation":
+        return None
+
+    # Use original book if no replacement was entered
+    book = final_book_title.strip()
+
+    if not book:
+        book = str(session["book"])
+
+    # Parse start/end
+    start_time = datetime.strptime(
+        session["start"],
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    end_time = datetime.strptime(
+        session["end"],
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    minutes = int(session["minutes"])
+
+    # --------------------------------------------------------
+    # Get student information from user.csv
+    # --------------------------------------------------------
+
+    user_df = pd.read_csv("user.csv")
+
+    user = user_df[
+        user_df["nickname"].astype(str)
+        == str(student_name)
+    ]
+
+    if user.empty:
+        return None
+
+    user = user.iloc[0]
+
+    # --------------------------------------------------------
+    # Save completed reading session
+    # --------------------------------------------------------
+
+    reading_sheet.append_row([
+        start_time.strftime("%Y-%m-%d"),
+        str(student_name),
+        str(user["nfc_id"]),
+        str(user["class"]),
+        str(book),
+        start_time.strftime("%H:%M:%S"),
+        end_time.strftime("%H:%M:%S"),
+        minutes
+    ])
+
+    # --------------------------------------------------------
+    # Update current book
+    # --------------------------------------------------------
+
+    user_df.loc[
+        user_df["nickname"].astype(str)
+        == str(student_name),
+        "current_book"
+    ] = book
+
+    user_df.to_csv(
+        "user.csv",
+        index=False
+    )
+
+    # --------------------------------------------------------
+    # Delete active session
+    # --------------------------------------------------------
+
+    active_sheet.delete_rows(
+        session["row"]
+    )
+
+    return {
+        "book": book,
+        "start": start_time,
+        "end": end_time,
+        "minutes": minutes
+    }
+
+
+# ============================================================
+# TODAY'S READING
 # ============================================================
 
 def get_today_reading_minutes(student_name):
@@ -73,35 +282,33 @@ def get_today_reading_minutes(student_name):
 
     df = pd.DataFrame(records)
 
-    # Make sure required columns exist
-    if "Date" not in df.columns or "User" not in df.columns:
+    if "Date" not in df.columns:
         return 0
 
-    # Remove blank rows
+    if "User" not in df.columns:
+        return 0
+
     df = df.dropna(
         subset=["Date", "User"]
     )
 
-    # Filter for this student
     df = df[
-        df["User"].astype(str) == str(student_name)
+        df["User"].astype(str)
+        == str(student_name)
     ]
 
     if df.empty:
         return 0
 
-    # Today's date in Singapore
     today = datetime.now(
         ZoneInfo("Asia/Singapore")
     ).date()
 
-    # Convert Date column
     df["Date"] = pd.to_datetime(
         df["Date"],
         errors="coerce"
     ).dt.date
 
-    # Keep today's sessions only
     df = df[
         df["Date"] == today
     ]
@@ -109,19 +316,10 @@ def get_today_reading_minutes(student_name):
     if df.empty:
         return 0
 
-    # Find minutes column
-    if "Minutes" in df.columns:
-
-        total_minutes = pd.to_numeric(
-            df["Minutes"],
-            errors="coerce"
-        ).fillna(0).sum()
-
-    else:
-
-        # Fallback in case your sheet uses
-        # a different column name
-        return 0
+    total_minutes = pd.to_numeric(
+        df["Minutes"],
+        errors="coerce"
+    ).fillna(0).sum()
 
     return int(total_minutes)
 
@@ -141,17 +339,13 @@ def calculate_reading_streak(student_name):
 
     df = pd.DataFrame(records)
 
-    if "Date" not in df.columns or "User" not in df.columns:
-        return 0
-
-    # Remove blank rows
     df = df.dropna(
         subset=["Date", "User"]
     )
 
-    # Filter this student
     df = df[
-        df["User"].astype(str) == str(student_name)
+        df["User"].astype(str)
+        == str(student_name)
     ]
 
     if df.empty:
@@ -164,15 +358,10 @@ def calculate_reading_streak(student_name):
         ).dt.date
     )
 
-    # Remove invalid dates
-    dates.discard(pd.NaT)
-
     today = datetime.now(
         ZoneInfo("Asia/Singapore")
     ).date()
 
-    # If student hasn't read today,
-    # start counting from yesterday.
     current = (
         today
         if today in dates

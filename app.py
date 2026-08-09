@@ -1,12 +1,16 @@
 import streamlit as st
 import pandas as pd
+
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from database import (
-    save_reading_session,
     calculate_reading_streak,
+    start_reading,
+    stop_reading,
+    finish_reading,
     get_today_reading_minutes,
+    get_active_session
 )
 
 
@@ -22,272 +26,21 @@ st.set_page_config(
 
 
 # ============================================================
-# CUSTOM CSS
-# ============================================================
-
-st.markdown(
-    """
-    <style>
-
-    /* ======================================================
-       OVERALL PAGE
-       ====================================================== */
-
-    .stApp {
-        background-color: #0e1117;
-    }
-
-    .block-container {
-        max-width: 900px;
-        padding-top: 45px;
-        padding-bottom: 60px;
-    }
-
-
-    /* ======================================================
-       REMOVE STREAMLIT EXTRA TOP SPACE
-       ====================================================== */
-
-    header[data-testid="stHeader"] {
-        background: transparent;
-    }
-
-
-    /* ======================================================
-       MAIN LOGO / TITLE
-       ====================================================== */
-
-    .readtap-title {
-        text-align: center;
-        font-size: 64px;
-        font-weight: 800;
-        color: #f5f5f5;
-        line-height: 1.1;
-        margin-bottom: 8px;
-    }
-
-    .readtap-tagline {
-        text-align: center;
-        font-size: 22px;
-        color: #aab2c0;
-        margin-bottom: 45px;
-    }
-
-
-    /* ======================================================
-       WELCOME CARD
-       ====================================================== */
-
-    .welcome-card {
-        background: #fff9e8;
-        border: 2px solid #e6ddc5;
-        border-radius: 28px;
-        padding: 42px 45px;
-        margin: 0 auto 55px auto;
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
-        color: #263b52;
-    }
-
-
-    .welcome-name {
-        text-align: center;
-        font-size: 34px;
-        font-weight: 750;
-        color: #263b52;
-        margin-bottom: 20px;
-    }
-
-
-    .badge {
-        text-align: center;
-        font-size: 22px;
-        color: #596273;
-        margin-bottom: 32px;
-    }
-
-
-    .profile-line {
-        text-align: center;
-        font-size: 21px;
-        color: #596273;
-        margin: 20px 0;
-        line-height: 1.5;
-    }
-
-
-    .profile-value {
-        font-weight: 700;
-        color: #263b52;
-    }
-
-
-    /* ======================================================
-       SECTION HEADINGS
-       ====================================================== */
-
-    .section-title {
-        font-size: 36px;
-        font-weight: 800;
-        color: #f5f5f5;
-        margin-top: 20px;
-        margin-bottom: 30px;
-    }
-
-
-    /* ======================================================
-       TODAY'S READING
-       ====================================================== */
-
-    .goal-label {
-        text-align: center;
-        color: #aab2c0;
-        font-size: 21px;
-        margin-bottom: 5px;
-    }
-
-
-    .goal-number {
-        text-align: center;
-        color: #f5f5f5;
-        font-size: 38px;
-        font-weight: 800;
-        margin-bottom: 20px;
-    }
-
-
-    .remaining-box {
-        background: #19324d;
-        border-radius: 12px;
-        padding: 18px 22px;
-        color: #54a8ff;
-        font-size: 18px;
-        margin-top: 18px;
-        margin-bottom: 50px;
-    }
-
-
-    .achieved-box {
-        background: #123d2b;
-        border-radius: 12px;
-        padding: 18px 22px;
-        color: #55d98b;
-        font-size: 18px;
-        margin-top: 18px;
-        margin-bottom: 50px;
-    }
-
-
-    /* ======================================================
-       READING AREA
-       ====================================================== */
-
-    .reading-info {
-        background: #19324d;
-        border-radius: 12px;
-        padding: 18px 22px;
-        color: #54a8ff;
-        font-size: 18px;
-        margin: 20px 0;
-    }
-
-
-    /* ======================================================
-       STREAMLIT TEXT
-       ====================================================== */
-
-    .stRadio label,
-    .stTextInput label {
-        color: #f5f5f5 !important;
-    }
-
-
-    /* ======================================================
-       BUTTONS
-       ====================================================== */
-
-    .stButton > button {
-        border-radius: 12px;
-        padding: 10px 22px;
-        font-size: 17px;
-        font-weight: 600;
-        border: 1px solid #3a414d;
-    }
-
-
-    /* ======================================================
-       DIVIDERS
-       ====================================================== */
-
-    hr {
-        border-color: #30343b;
-        margin-top: 35px;
-        margin-bottom: 35px;
-    }
-
-
-    /* ======================================================
-       MOBILE
-       ====================================================== */
-
-    @media (max-width: 600px) {
-
-        .block-container {
-            padding-left: 20px;
-            padding-right: 20px;
-            padding-top: 25px;
-        }
-
-        .readtap-title {
-            font-size: 44px;
-        }
-
-        .readtap-tagline {
-            font-size: 18px;
-            margin-bottom: 30px;
-        }
-
-        .welcome-card {
-            padding: 30px 20px;
-            border-radius: 22px;
-        }
-
-        .welcome-name {
-            font-size: 27px;
-        }
-
-        .profile-line {
-            font-size: 18px;
-        }
-
-        .section-title {
-            font-size: 29px;
-        }
-
-        .goal-number {
-            font-size: 32px;
-        }
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-
-# ============================================================
 # SESSION STATE
 # ============================================================
 
-for key, value in {
+for k, v in {
     "reading": False,
     "start_time": None,
     "current_book": "",
     "show_summary": False,
-    "summary": {}
+    "summary": {},
+    "book_confirmation": False,
+    "pending_session": None
 }.items():
 
-    if key not in st.session_state:
-        st.session_state[key] = value
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 
 # ============================================================
@@ -295,16 +48,26 @@ for key, value in {
 # ============================================================
 
 user_df = pd.read_csv("user.csv")
+
 user = user_df.iloc[0]
 
-nickname = user["nickname"]
+nickname = str(user["nickname"])
+nfc_id = str(user["nfc_id"])
+
+streak = calculate_reading_streak(
+    nickname
+)
+
+today_total = get_today_reading_minutes(
+    nickname
+)
+
 goal = int(user["goal"])
 
-streak = calculate_reading_streak(nickname)
-
-today_total = get_today_reading_minutes(nickname)
-
-remaining = max(goal - today_total, 0)
+remaining = max(
+    goal - today_total,
+    0
+)
 
 
 # ============================================================
@@ -313,7 +76,9 @@ remaining = max(goal - today_total, 0)
 
 try:
 
-    reading_log = pd.read_csv("reading_log.csv")
+    reading_log = pd.read_csv(
+        "reading_log.csv"
+    )
 
     recent_books = (
         reading_log["book_title"]
@@ -329,19 +94,169 @@ except Exception:
 
 
 # ============================================================
-# READTAP HEADER
+# NFC TAP DETECTION
 # ============================================================
 
-st.html(
-    """
-    <div class="readtap-title">
-        📚 ReadTap
-    </div>
+nfc_student = st.query_params.get(
+    "student"
+)
 
-    <div class="readtap-tagline">
-        Small taps. Big reading adventures.
-    </div>
+
+if (
+    nfc_student
+    and str(nfc_student) == nfc_id
+):
+
+    # --------------------------------------------------------
+    # Check whether there is already an active session
+    # --------------------------------------------------------
+
+    active = get_active_session(
+        nickname
+    )
+
+    # ========================================================
+    # FIRST TAP → START
+    # ========================================================
+
+    if active is None:
+
+        book = str(
+            user["current_book"]
+        ).strip()
+
+        if book:
+
+            start_time = datetime.now(
+                ZoneInfo("Asia/Singapore")
+            )
+
+            success = start_reading(
+                student_name=nickname,
+                nfc_id=nfc_id,
+                book_title=book,
+                start_time=start_time
+            )
+
+            if success:
+
+                st.session_state.current_book = book
+
+                st.session_state.start_time = start_time
+
+                st.session_state.reading = True
+
+                st.session_state.show_summary = False
+
+                st.session_state.book_confirmation = False
+
+                # Remove NFC URL parameter
+                st.query_params.clear()
+
+                st.rerun()
+
+    # ========================================================
+    # SECOND TAP → STOP
+    # ========================================================
+
+    elif active["status"] == "active":
+
+        end_time = datetime.now(
+            ZoneInfo("Asia/Singapore")
+        )
+
+        stopped = stop_reading(
+            nickname,
+            end_time
+        )
+
+        if stopped:
+
+            st.session_state.pending_session = stopped
+
+            st.session_state.book_confirmation = True
+
+            st.session_state.reading = False
+
+            st.query_params.clear()
+
+            st.rerun()
+
+
+# ============================================================
+# HEADER
+# ============================================================
+
+st.markdown(
     """
+    <style>
+
+    .readtap-header {
+        text-align: center;
+        padding: 20px 0 30px 0;
+    }
+
+    .readtap-logo {
+        font-size: 52px;
+        font-weight: 800;
+        color: #24364B;
+    }
+
+    .readtap-tagline {
+        font-size: 20px;
+        color: #667085;
+        margin-top: -10px;
+    }
+
+    .welcome-card {
+        background: #FFF9E8;
+        border: 2px solid #E7DFC5;
+        border-radius: 28px;
+        padding: 40px;
+        margin-bottom: 40px;
+        color: #24364B;
+        text-align: center;
+    }
+
+    .welcome-name {
+        font-size: 34px;
+        font-weight: 700;
+        margin-bottom: 20px;
+    }
+
+    .badge {
+        font-size: 21px;
+        margin-bottom: 30px;
+    }
+
+    .profile-line {
+        font-size: 20px;
+        margin: 20px 0;
+        color: #5C6675;
+    }
+
+    .profile-value {
+        font-weight: 700;
+        color: #24364B;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    """
+    <div class="readtap-header">
+        <div class="readtap-logo">
+            📚 ReadTap
+        </div>
+        <div class="readtap-tagline">
+            Small taps. Big reading adventures.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
 
@@ -349,9 +264,11 @@ st.html(
 # WELCOME CARD
 # ============================================================
 
-last_book = user["current_book"]
+current_book = str(
+    user["current_book"]
+).strip()
 
-st.html(
+st.markdown(
     f"""
     <div class="welcome-card">
 
@@ -360,13 +277,13 @@ st.html(
         </div>
 
         <div class="badge">
-            🏅 📚 &nbsp; ReadTap Explorer
+            🏅 📚 ReadTap Explorer
         </div>
 
         <div class="profile-line">
             📖 Last Book:
             <span class="profile-value">
-                {last_book}
+                {current_book}
             </span>
         </div>
 
@@ -385,63 +302,9 @@ st.html(
         </div>
 
     </div>
-    """
+    """,
+    unsafe_allow_html=True
 )
-
-# ============================================================
-# TODAY'S READING
-# ============================================================
-
-st.html(
-    """
-    <div class="section-title">
-        📖 Today's Reading
-    </div>
-    """
-)
-
-st.html(
-    """
-    <div class="goal-label">
-        🎯 Daily Reading Goal
-    </div>
-    """
-)
-
-st.html(
-    f"""
-    <div class="goal-number">
-        {today_total} / {goal} minutes
-    </div>
-    """
-)
-
-progress = min(today_total / goal, 1.0) if goal > 0 else 0
-
-st.progress(progress)
-
-
-if today_total >= goal:
-
-    st.markdown(
-        """
-        <div class="achieved-box">
-            🎉 Daily reading goal achieved!
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-else:
-
-    st.markdown(
-        f"""
-        <div class="remaining-box">
-            📚 {remaining} more minutes to reach today's goal.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
 
 
 # ============================================================
@@ -452,33 +315,38 @@ if st.session_state.show_summary:
 
     s = st.session_state.summary
 
-    st.success("🎉 Reading Complete!")
+    st.success(
+        "🎉 Reading Complete!"
+    )
 
-    st.markdown(
-        f"""
-        ## Great job, {nickname}!
+    st.write(
+        f"## Great job, {nickname}!"
+    )
 
-        ### 📚 Book
-        {s["book"]}
+    st.write("### 📚 Book")
+    st.write(s["book"])
 
-        ### 🕒 Started
-        {s["start"]}
+    st.write("### 🕒 Started")
+    st.write(s["start"])
 
-        ### 🕒 Finished
-        {s["end"]}
+    st.write("### 🕒 Finished")
+    st.write(s["end"])
 
-        ### ⏱ Reading Time
-        **{s["minutes"]} minutes**
+    st.write("### ⏱ Reading Time")
+    st.write(
+        f"**{s['minutes']} minutes**"
+    )
 
-        ### 📖 Today's Total
-        **{s["today_total"]} / {s["goal"]} minutes**
-        """,
-        unsafe_allow_html=True
+    st.write("### 📖 Today's Total")
+    st.write(
+        f"**{s['today_total']} / {s['goal']} minutes**"
     )
 
     if s["today_total"] >= s["goal"]:
 
-        st.success("🎯 Daily Goal Achieved!")
+        st.success(
+            "🎯 Daily Goal Achieved!"
+        )
 
         st.balloons()
 
@@ -489,11 +357,99 @@ if st.session_state.show_summary:
             "to reach today's goal."
         )
 
-    if st.button("📚 Start Another Reading Session"):
+    if st.button(
+        "📚 Start Another Reading Session"
+    ):
 
         st.session_state.show_summary = False
 
         st.rerun()
+
+
+# ============================================================
+# BOOK CONFIRMATION
+# ============================================================
+
+elif st.session_state.book_confirmation:
+
+    session = st.session_state.pending_session
+
+    st.subheader(
+        "📖 What were you reading?"
+    )
+
+    original_book = session["book"]
+
+    minutes = int(
+        session["minutes"]
+    )
+
+    st.info(
+        f"📚 **{original_book}**\n\n"
+        f"⏱ Reading time: **{minutes} minutes**"
+    )
+
+    st.write(
+        "If this is correct, leave the box empty."
+    )
+
+    new_book = st.text_input(
+        "Change book title if needed",
+        placeholder=original_book
+    )
+
+    if st.button(
+        "✅ Save Reading"
+    ):
+
+        result = finish_reading(
+            nickname,
+            new_book
+        )
+
+        if result:
+
+            today_total = get_today_reading_minutes(
+                nickname
+            )
+
+            goal = int(
+                user["goal"]
+            )
+
+            remaining = max(
+                goal - today_total,
+                0
+            )
+
+            st.session_state.summary = {
+
+                "book": result["book"],
+
+                "start": result["start"].strftime(
+                    "%I:%M %p"
+                ),
+
+                "end": result["end"].strftime(
+                    "%I:%M %p"
+                ),
+
+                "minutes": result["minutes"],
+
+                "today_total": today_total,
+
+                "goal": goal,
+
+                "remaining": remaining
+            }
+
+            st.session_state.book_confirmation = False
+
+            st.session_state.pending_session = None
+
+            st.session_state.show_summary = True
+
+            st.rerun()
 
 
 # ============================================================
@@ -502,182 +458,118 @@ if st.session_state.show_summary:
 
 elif st.session_state.reading:
 
-    st.success("📚 Enjoy your reading!")
+    st.success(
+        "📚 Enjoy your reading!"
+    )
 
-    st.markdown(
-        f"""
-        ## 📖 {st.session_state.current_book}
-        """,
-        unsafe_allow_html=True
+    st.write(
+        f"## 📖 {st.session_state.current_book}"
     )
 
     st.info(
         "Started at "
-        f"{st.session_state.start_time.strftime('%I:%M %p')}"
+        +
+        st.session_state.start_time.strftime(
+            "%I:%M %p"
+        )
     )
 
-    if st.button("✅ Finish Reading"):
-
-        end = datetime.now(
-            ZoneInfo("Asia/Singapore")
-        )
-
-        minutes = round(
-            (
-                end - st.session_state.start_time
-            ).total_seconds() / 60
-        )
-
-        # ----------------------------------------------------
-        # SAVE SESSION
-        # ----------------------------------------------------
-
-        save_reading_session(
-            student_name=user["nickname"],
-            nfc_id=user["nfc_id"],
-            student_class=user["class"],
-            book_title=st.session_state.current_book,
-            start_time=st.session_state.start_time,
-            end_time=end,
-            minutes=minutes
-        )
-
-        # ----------------------------------------------------
-        # RECALCULATE TODAY'S TOTAL
-        # ----------------------------------------------------
-
-        today_total = get_today_reading_minutes(
-            user["nickname"]
-        )
-
-        goal = int(user["goal"])
-
-        remaining = max(
-            goal - today_total,
-            0
-        )
-
-        # ----------------------------------------------------
-        # SAVE SUMMARY
-        # ----------------------------------------------------
-
-        st.session_state.summary = {
-
-            "book": st.session_state.current_book,
-
-            "start": st.session_state.start_time.strftime(
-                "%I:%M %p"
-            ),
-
-            "end": end.strftime(
-                "%I:%M %p"
-            ),
-
-            "minutes": minutes,
-
-            "today_total": today_total,
-
-            "goal": goal,
-
-            "remaining": remaining
-        }
-
-        st.session_state.reading = False
-
-        st.session_state.show_summary = True
-
-        st.rerun()
+    st.write(
+        "📱 Tap your ReadTap tag again "
+        "when you finish reading."
+    )
 
 
 # ============================================================
-# START READING
+# TODAY'S READING
 # ============================================================
 
 else:
 
+    st.subheader(
+        "📖 Today's Reading"
+    )
+
+    st.write(
+        f"**🎯 Daily Reading Goal**"
+    )
+
     st.markdown(
-        """
-        <div class="section-title">
-            📚 What are you reading today?
-        </div>
-        """,
-        unsafe_allow_html=True
+        f"## {today_total} / {goal} minutes"
     )
 
-    option = st.radio(
-        "Choose an option",
-        (
-            "Continue previous book",
-            "Start a new book"
-        )
+    progress = (
+        min(today_total / goal, 1.0)
+        if goal > 0
+        else 0
     )
 
-    if option == "Continue previous book":
+    st.progress(progress)
 
-        book = user["current_book"]
+    if today_total >= goal:
 
-        st.markdown(
-            f"""
-            <div class="reading-info">
-                📖 Continuing:
-                <strong>{book}</strong>
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.success(
+            "🎯 Daily Goal Achieved!"
         )
 
     else:
 
-        default = (
-            recent_books[-1]
-            if recent_books
-            else ""
+        st.info(
+            f"📚 {remaining} more minutes "
+            "to reach today's goal."
         )
 
-        book = st.text_input(
-            "Book title",
-            value=default
-        )
 
-        if recent_books:
+# ============================================================
+# BOOK CHANGE
+# ============================================================
 
-            st.caption(
-                "Recent books: "
-                + ", ".join(
-                    reversed(recent_books)
-                )
-            )
+if (
+    not st.session_state.reading
+    and not st.session_state.book_confirmation
+    and not st.session_state.show_summary
+):
 
-    # --------------------------------------------------------
-    # START BUTTON
-    # --------------------------------------------------------
+    st.divider()
 
-    if st.button("📖 Start Reading"):
+    st.subheader(
+        "📚 What are you reading?"
+    )
 
-        if not book.strip():
+    st.write(
+        f"Current book: **{current_book}**"
+    )
 
-            st.warning(
-                "Please enter a book title."
-            )
+    new_book = st.text_input(
+        "Change book title",
+        placeholder="Enter a new book title"
+    )
 
-        else:
+    if st.button(
+        "💾 Change Book"
+    ):
 
-            st.session_state.current_book = book
+        if new_book.strip():
 
             user_df.loc[
                 0,
                 "current_book"
-            ] = book
+            ] = new_book.strip()
 
             user_df.to_csv(
                 "user.csv",
                 index=False
             )
 
-            st.session_state.start_time = datetime.now(
-                ZoneInfo("Asia/Singapore")
+            st.success(
+                f"📖 Current book changed to "
+                f"**{new_book.strip()}**"
             )
 
-            st.session_state.reading = True
-
             st.rerun()
+
+        else:
+
+            st.warning(
+                "Please enter a book title."
+            )
