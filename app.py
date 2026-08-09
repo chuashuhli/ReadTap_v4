@@ -172,6 +172,11 @@ if (
 
         if stopped:
 
+            book = stopped["book"]
+            start_time = stopped["start"]
+            end_time = stopped["end"]
+            minutes = stopped["minutes"]
+
             st.session_state.pending_session = stopped
 
             st.session_state.book_confirmation = True

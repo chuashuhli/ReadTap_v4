@@ -102,66 +102,41 @@ def start_reading(
 # ============================================================
 
 def stop_reading(student_name, end_time):
-
     sheet = get_sheet("Active Sessions")
 
-    session = get_active_session(student_name)
+    records = sheet.get_all_records()
 
-    if not session:
-        return None
+    for i, row in enumerate(records, start=2):
 
-    # If already waiting for book confirmation,
-    # don't stop it again.
-    if session["status"] == "awaiting_confirmation":
+        if str(row["User"]) == str(student_name):
 
-        return session
+            # Get the stored start time
+            start_time = datetime.strptime(
+                row["Start"],
+                "%Y-%m-%d %H:%M:%S"
+            )
 
-    start_time = datetime.strptime(
-        session["start"],
-        "%Y-%m-%d %H:%M:%S"
-    )
+            # Make sure the stored time uses Singapore timezone
+            start_time = start_time.replace(
+                tzinfo=ZoneInfo("Asia/Singapore")
+            )
 
-    minutes = round(
-        (
-            end_time - start_time
-        ).total_seconds() / 60
-    )
+            # Calculate reading duration
+            minutes = round(
+                (end_time - start_time).total_seconds() / 60
+            )
 
-    # Prevent negative values
-    minutes = max(minutes, 0)
+            # Delete active session
+            sheet.delete_rows(i)
 
-    row = session["row"]
+            return {
+                "book": row["Book"],
+                "start": start_time,
+                "end": end_time,
+                "minutes": minutes
+            }
 
-    # Update End
-    sheet.update_cell(
-        row,
-        5,
-        end_time.strftime("%Y-%m-%d %H:%M:%S")
-    )
-
-    # Update Minutes
-    sheet.update_cell(
-        row,
-        6,
-        int(minutes)
-    )
-
-    # Update Status
-    sheet.update_cell(
-        row,
-        7,
-        "awaiting_confirmation"
-    )
-
-    session["end"] = end_time.strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
-
-    session["minutes"] = int(minutes)
-
-    session["status"] = "awaiting_confirmation"
-
-    return session
+    return None
 
 
 # ============================================================
