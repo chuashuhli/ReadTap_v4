@@ -363,7 +363,8 @@ st.markdown(
     }
 
     </style>
-    """,
+    """
+    ),
     unsafe_allow_html=True
 )
 
@@ -601,7 +602,8 @@ st.markdown(
         </div>
 
     </div>
-    """,
+    """
+    ),
     unsafe_allow_html=True
 )
 
@@ -623,7 +625,8 @@ if st.session_state.show_summary:
                 🎉 Reading Complete!
             </div>
 
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -670,7 +673,8 @@ if st.session_state.show_summary:
         </div>
 
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -712,7 +716,8 @@ elif st.session_state.awaiting_confirmation:
         <div class="section-title">
             📚 Almost done!
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -733,7 +738,8 @@ elif st.session_state.awaiting_confirmation:
                 {original_book}
             </span>
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -816,7 +822,8 @@ elif st.session_state.reading:
         <div class="section-title">
             📖 You're reading!
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -839,7 +846,8 @@ elif st.session_state.reading:
             </div>
 
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -894,7 +902,8 @@ else:
         <div class="section-title">
             📚 What are you reading today?
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -933,7 +942,8 @@ else:
                         {book}
                     </span>
                 </div>
-                """,
+                """
+                ),
                 unsafe_allow_html=True
             )
 
