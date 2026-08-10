@@ -220,19 +220,19 @@ def stop_reading(
         # or change the book title.
         # ----------------------------------------------------
 
-        sheet.update(
+        sheet.update_acell(
             f"E{i}",
             end_time.strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
         )
 
-        sheet.update(
+        sheet.update_acell(
             f"F{i}",
             minutes
         )
 
-        sheet.update(
+        sheet.update_acell(
             f"G{i}",
             "awaiting_confirmation"
         )

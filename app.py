@@ -1,13 +1,18 @@
 import streamlit as st
 import pandas as pd
+
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from database import (
-    save_reading_session,
     calculate_reading_streak,
-    get_today_reading_minutes
+    get_today_reading_minutes,
+    get_active_session,
+    start_reading,
+    stop_reading,
+    finish_reading
 )
+
 
 # ============================================================
 # PAGE CONFIG
@@ -21,6 +26,13 @@ st.set_page_config(
 
 
 # ============================================================
+# TIMEZONE
+# ============================================================
+
+SGT = ZoneInfo("Asia/Singapore")
+
+
+# ============================================================
 # SESSION STATE
 # ============================================================
 
@@ -29,7 +41,9 @@ for k, v in {
     "start_time": None,
     "current_book": "",
     "show_summary": False,
-    "summary": {}
+    "summary": {},
+    "awaiting_confirmation": False,
+    "stopped_session": None
 }.items():
 
     if k not in st.session_state:
@@ -41,16 +55,89 @@ for k, v in {
 # ============================================================
 
 user_df = pd.read_csv("user.csv")
+
 user = user_df.iloc[0]
 
-streak = calculate_reading_streak(user["nickname"])
-
-# Today's cumulative reading
-today_total = get_today_reading_minutes(user["nickname"])
-
+nickname = str(user["nickname"])
+nfc_id = str(user["nfc_id"])
+student_class = str(user["class"])
 goal = int(user["goal"])
 
-remaining = max(goal - today_total, 0)
+
+# ============================================================
+# CHECK ACTIVE SESSION FROM GOOGLE SHEETS
+# ============================================================
+
+active_session = get_active_session(nickname)
+
+
+# ============================================================
+# RESTORE ACTIVE SESSION
+# ============================================================
+
+if active_session:
+
+    status = active_session["status"]
+
+    # --------------------------------------------------------
+    # Active reading
+    # --------------------------------------------------------
+
+    if status == "active":
+
+        st.session_state.reading = True
+        st.session_state.current_book = str(
+            active_session["book"]
+        )
+
+        start_value = active_session["start"]
+
+        try:
+
+            st.session_state.start_time = datetime.strptime(
+                str(start_value),
+                "%Y-%m-%d %H:%M:%S"
+            ).replace(
+                tzinfo=SGT
+            )
+
+        except Exception:
+
+            st.session_state.start_time = None
+
+
+    # --------------------------------------------------------
+    # Waiting for book confirmation
+    # --------------------------------------------------------
+
+    elif status == "awaiting_confirmation":
+
+        st.session_state.awaiting_confirmation = True
+
+        st.session_state.stopped_session = active_session
+
+
+# ============================================================
+# STREAK
+# ============================================================
+
+streak = calculate_reading_streak(
+    nickname
+)
+
+
+# ============================================================
+# TODAY'S CUMULATIVE READING
+# ============================================================
+
+today_total = get_today_reading_minutes(
+    nickname
+)
+
+remaining = max(
+    goal - today_total,
+    0
+)
 
 
 # ============================================================
@@ -59,7 +146,9 @@ remaining = max(goal - today_total, 0)
 
 try:
 
-    reading_log = pd.read_csv("reading_log.csv")
+    reading_log = pd.read_csv(
+        "reading_log.csv"
+    )
 
     recent_books = (
         reading_log["book_title"]
@@ -80,9 +169,13 @@ except Exception:
 
 st.title("📚 ReadTap")
 
-st.write(f"Welcome, **{user['nickname']}!**")
+st.write(
+    f"Welcome, **{nickname}!**"
+)
 
-st.write(f"🔥 Reading streak: **{streak} days**")
+st.write(
+    f"🔥 Reading streak: **{streak} days**"
+)
 
 st.divider()
 
@@ -97,18 +190,26 @@ st.write(
     f"**{today_total} / {goal} minutes**"
 )
 
-progress = min(today_total / goal, 1.0) if goal > 0 else 0
+progress = (
+    min(today_total / goal, 1.0)
+    if goal > 0
+    else 0
+)
 
 st.progress(progress)
 
+
 if today_total >= goal:
 
-    st.success("🎯 Daily Goal Achieved!")
+    st.success(
+        "🎯 Daily Goal Achieved!"
+    )
 
 else:
 
     st.info(
-        f"📚 {remaining} more minutes to reach today's goal."
+        f"📚 {remaining} more minutes "
+        "to reach today's goal."
     )
 
 
@@ -123,30 +224,50 @@ if st.session_state.show_summary:
 
     s = st.session_state.summary
 
-    st.success("🎉 Reading Complete!")
+    st.success(
+        "🎉 Reading Complete!"
+    )
 
-    st.write(f"## Great job, {user['nickname']}!")
+    st.write(
+        f"## Great job, {nickname}!"
+    )
 
     st.write("### 📚 Book")
-    st.write(s["book"])
+
+    st.write(
+        s["book"]
+    )
 
     st.write("### 🕒 Started")
-    st.write(s["start"])
+
+    st.write(
+        s["start"]
+    )
 
     st.write("### 🕒 Finished")
-    st.write(s["end"])
+
+    st.write(
+        s["end"]
+    )
 
     st.write("### ⏱ Reading Time")
-    st.write(f"**{s['minutes']} minutes**")
+
+    st.write(
+        f"**{s['minutes']} minutes**"
+    )
 
     st.write("### 📖 Today's Total")
+
     st.write(
-        f"**{s['today_total']} / {s['goal']} minutes**"
+        f"**{s['today_total']} / "
+        f"{s['goal']} minutes**"
     )
 
     if s["today_total"] >= s["goal"]:
 
-        st.success("🎯 Daily Goal Achieved!")
+        st.success(
+            "🎯 Daily Goal Achieved!"
+        )
 
         st.balloons()
 
@@ -157,11 +278,112 @@ if st.session_state.show_summary:
             "to reach today's goal."
         )
 
-    if st.button("📚 Start Another Reading Session"):
+    if st.button(
+        "📚 Start Another Reading Session"
+    ):
 
         st.session_state.show_summary = False
 
         st.rerun()
+
+
+# ============================================================
+# BOOK CONFIRMATION
+# ============================================================
+
+elif st.session_state.awaiting_confirmation:
+
+    session = st.session_state.stopped_session
+
+    st.success(
+        "⏱ Reading session stopped!"
+    )
+
+    st.write(
+        "### 📚 Confirm your book"
+    )
+
+    original_book = str(
+        session["book"]
+    )
+
+    st.write(
+        f"Current book: **{original_book}**"
+    )
+
+    final_book = st.text_input(
+        "Book title",
+        value=original_book
+    )
+
+    if st.button(
+        "✅ Confirm Reading"
+    ):
+
+        result = finish_reading(
+            student_name=nickname,
+            final_book_title=final_book
+        )
+
+        if result is None:
+
+            st.error(
+                "Unable to save the reading session."
+            )
+
+        else:
+
+            # ----------------------------------------------
+            # Recalculate today's total
+            # ----------------------------------------------
+
+            today_total = get_today_reading_minutes(
+                nickname
+            )
+
+            remaining = max(
+                goal - today_total,
+                0
+            )
+
+            # ----------------------------------------------
+            # Save summary
+            # ----------------------------------------------
+
+            st.session_state.summary = {
+
+                "book": result["book"],
+
+                "start": result["start"].strftime(
+                    "%I:%M %p"
+                ),
+
+                "end": result["end"].strftime(
+                    "%I:%M %p"
+                ),
+
+                "minutes": result["minutes"],
+
+                "today_total": today_total,
+
+                "goal": goal,
+
+                "remaining": remaining
+            }
+
+            st.session_state.awaiting_confirmation = False
+
+            st.session_state.stopped_session = None
+
+            st.session_state.reading = False
+
+            st.session_state.start_time = None
+
+            st.session_state.current_book = ""
+
+            st.session_state.show_summary = True
+
+            st.rerun()
 
 
 # ============================================================
@@ -170,87 +392,56 @@ if st.session_state.show_summary:
 
 elif st.session_state.reading:
 
-    st.success("📚 Enjoy your reading!")
+    st.success(
+        "📚 Enjoy your reading!"
+    )
 
     st.write(
         f"## 📖 {st.session_state.current_book}"
     )
 
-    st.info(
-        "Started at "
-        f"{st.session_state.start_time.strftime('%I:%M %p')}"
-    )
+    if st.session_state.start_time:
 
-    if st.button("✅ Finish Reading"):
+        st.info(
+            "Started at "
+            f"{st.session_state.start_time.strftime('%I:%M %p')}"
+        )
 
-        st.write("Saving reading session...")
+    if st.button(
+        "✅ Finish Reading"
+    ):
 
         end = datetime.now(
-            ZoneInfo("Asia/Singapore")
+            SGT
         )
 
-        minutes = round(
-            (
-                end - st.session_state.start_time
-            ).total_seconds() / 60
+        result = stop_reading(
+            student_name=nickname,
+            end_time=end
         )
 
-        # Save completed session
-        save_reading_session(
-            student_name=user["nickname"],
-            nfc_id=user["nfc_id"],
-            student_class=user["class"],
-            book_title=st.session_state.current_book,
-            start_time=st.session_state.start_time,
-            end_time=end,
-            minutes=minutes
-        )
+        if result is None:
 
-        # ====================================================
-        # V2: CALCULATE CUMULATIVE READING FOR TODAY
-        # ====================================================
+            st.error(
+                "Unable to stop the reading session."
+            )
 
-        today_total = get_today_reading_minutes(
-            user["nickname"]
-        )
+        else:
 
-        goal = int(user["goal"])
+            st.session_state.reading = False
 
-        remaining = max(
-            goal - today_total,
-            0
-        )
+            st.session_state.start_time = None
 
-        # ====================================================
-        # SAVE SUMMARY
-        # ====================================================
+            st.session_state.awaiting_confirmation = True
 
-        st.session_state.summary = {
+            st.session_state.stopped_session = {
+                "book": result["book"],
+                "start": result["start"],
+                "end": result["end"],
+                "minutes": result["minutes"]
+            }
 
-            "book": st.session_state.current_book,
-
-            "start": st.session_state.start_time.strftime(
-                "%I:%M %p"
-            ),
-
-            "end": end.strftime(
-                "%I:%M %p"
-            ),
-
-            "minutes": minutes,
-
-            "today_total": today_total,
-
-            "goal": goal,
-
-            "remaining": remaining
-        }
-
-        st.session_state.reading = False
-
-        st.session_state.show_summary = True
-
-        st.rerun()
+            st.rerun()
 
 
 # ============================================================
@@ -259,7 +450,9 @@ elif st.session_state.reading:
 
 else:
 
-    st.subheader("📚 What are you reading today?")
+    st.subheader(
+        "📚 What are you reading today?"
+    )
 
     option = st.radio(
         "Choose an option",
@@ -269,13 +462,25 @@ else:
         )
     )
 
+
+    # --------------------------------------------------------
+    # CONTINUE PREVIOUS BOOK
+    # --------------------------------------------------------
+
     if option == "Continue previous book":
 
-        book = user["current_book"]
+        book = str(
+            user["current_book"]
+        )
 
         st.info(
             f"📖 Continuing: **{book}**"
         )
+
+
+    # --------------------------------------------------------
+    # START NEW BOOK
+    # --------------------------------------------------------
 
     else:
 
@@ -299,7 +504,14 @@ else:
                 )
             )
 
-    if st.button("📖 Start Reading"):
+
+    # --------------------------------------------------------
+    # START BUTTON
+    # --------------------------------------------------------
+
+    if st.button(
+        "📖 Start Reading"
+    ):
 
         if not book.strip():
 
@@ -309,19 +521,34 @@ else:
 
         else:
 
-            st.session_state.current_book = book
-
-            user_df.loc[0, "current_book"] = book
-
-            user_df.to_csv(
-                "user.csv",
-                index=False
+            start_time = datetime.now(
+                SGT
             )
 
-            st.session_state.start_time = datetime.now(
-                ZoneInfo("Asia/Singapore")
+            success = start_reading(
+                student_name=nickname,
+                nfc_id=nfc_id,
+                book_title=book.strip(),
+                start_time=start_time
             )
 
-            st.session_state.reading = True
+            if not success:
 
-            st.rerun()
+                st.warning(
+                    "You already have an active "
+                    "reading session."
+                )
+
+            else:
+
+                st.session_state.current_book = (
+                    book.strip()
+                )
+
+                st.session_state.start_time = (
+                    start_time
+                )
+
+                st.session_state.reading = True
+
+                st.rerun()
