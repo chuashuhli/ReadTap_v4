@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import textwrap
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -37,6 +38,7 @@ SGT = ZoneInfo("Asia/Singapore")
 # ============================================================
 
 st.markdown(
+    textwrap.dedent(
     """
     <style>
 
@@ -525,6 +527,7 @@ if active_session:
 # ============================================================
 
 st.markdown(
+    textwrap.dedent(
     f"""
     <div class="welcome-card">
 
@@ -612,6 +615,7 @@ if st.session_state.show_summary:
     s = st.session_state.summary
 
     st.markdown(
+        textwrap.dedent(
         """
         <div class="summary-card">
 
@@ -628,6 +632,7 @@ if st.session_state.show_summary:
     )
 
     st.markdown(
+        textwrap.dedent(
         f"""
         <div class="summary-item">
             <div class="summary-label">📖 Book</div>
@@ -702,6 +707,7 @@ elif st.session_state.awaiting_confirmation:
     session = st.session_state.stopped_session
 
     st.markdown(
+        textwrap.dedent(
         """
         <div class="section-title">
             📚 Almost done!
@@ -719,6 +725,7 @@ elif st.session_state.awaiting_confirmation:
     )
 
     st.markdown(
+        textwrap.dedent(
         f"""
         <div class="book-info">
             📖 Current book:
@@ -804,6 +811,7 @@ elif st.session_state.awaiting_confirmation:
 elif st.session_state.reading:
 
     st.markdown(
+        textwrap.dedent(
         """
         <div class="section-title">
             📖 You're reading!
@@ -813,6 +821,7 @@ elif st.session_state.reading:
     )
 
     st.markdown(
+        textwrap.dedent(
         f"""
         <div class="reading-card">
 
@@ -880,6 +889,7 @@ elif st.session_state.reading:
 else:
 
     st.markdown(
+        textwrap.dedent(
         """
         <div class="section-title">
             📚 What are you reading today?
@@ -915,6 +925,7 @@ else:
         else:
 
             st.markdown(
+                textwrap.dedent(
                 f"""
                 <div class="book-info">
                     📖 Continuing:
