@@ -560,34 +560,50 @@ elif st.session_state.reading:
     )
 
     if st.session_state.start_time:
-        started_text = st.session_state.start_time.strftime("%I:%M %p")
+        started_text = st.session_state.start_time.strftime(
+            "%I:%M %p"
+        )
     else:
         started_text = "—"
 
     reading_html = f"""
 <div class="reading-card">
-<div class="reading-book">📖 {st.session_state.current_book}</div>
+<div class="reading-book">📖 Reading in progress</div>
 <div class="reading-start">🕒 Started at {started_text}</div>
 </div>
 """
 
-    st.markdown(reading_html, unsafe_allow_html=True)
+    st.markdown(
+        reading_html,
+        unsafe_allow_html=True,
+    )
 
     st.write("")
 
-    if st.button("✅ Finish Reading"):
-        end = datetime.now(SGT)
+    st.info(
+        "📚 Keep reading and tap Stop Reading when you're done."
+    )
+
+    if st.button(
+        "🛑 Stop Reading",
+        use_container_width=True,
+    ):
+        end_time = datetime.now(SGT)
 
         result = stop_reading(
             student_name=nickname,
-            end_time=end,
+            end_time=end_time,
         )
 
         if result is None:
-            st.error("Unable to stop the reading session.")
+            st.error(
+                "Unable to stop the reading session."
+            )
+
         else:
             st.session_state.reading = False
             st.session_state.start_time = None
+
             st.session_state.awaiting_confirmation = True
 
             st.session_state.stopped_session = {
