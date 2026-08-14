@@ -480,32 +480,52 @@ def finish_reading(
         return None
 
     # --------------------------------------------------------
-    # Determine final book.
-    #
-    # Priority:
-    #
-    # 1. User's confirmed book title
-    # 2. Book already stored in Active Sessions
-    #
-    # The second option preserves compatibility with the
-    # current V2/V3 flow.
-    # --------------------------------------------------------
+# Determine final book
+# --------------------------------------------------------
 
+book = str(
+    final_book_title or ""
+).strip()
+
+# If the student entered a book title,
+# use that title.
+if not book:
     book = str(
-        final_book_title or ""
+        session["book"] or ""
     ).strip()
 
-    if not book:
-        book = str(
-            session["book"] or ""
-        ).strip()
+# In V3, the Book field is intentionally blank
+# when the reading session starts.
+#
+# If the student leaves the confirmation field blank,
+# use their current_book from user.csv.
+if not book:
+    user_df = pd.read_csv(
+        "user.csv"
+    )
 
-    # --------------------------------------------------------
-    # If there is still no book, don't save an incomplete log.
-    # --------------------------------------------------------
+    user_match = user_df[
+        user_df["nickname"].astype(str)
+        == str(student_name)
+    ]
 
-    if not book:
-        return None
+    if not user_match.empty:
+        fallback_book = user_match.iloc[0].get(
+            "current_book",
+            ""
+        )
+
+        if pd.notna(fallback_book):
+            book = str(
+                fallback_book
+            ).strip()
+
+# --------------------------------------------------------
+# If there is still no book, don't save an incomplete log.
+# --------------------------------------------------------
+
+if not book:
+    return None
 
     # --------------------------------------------------------
     # Parse start/end times.

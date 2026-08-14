@@ -499,40 +499,109 @@ elif st.session_state.awaiting_confirmation:
         unsafe_allow_html=True,
     )
 
-    st.write("Let's confirm the book you were reading.")
+    st.write(
+        "Let's confirm the book you were reading."
+    )
 
-    original_book = str(session.get("book", ""))
+    # --------------------------------------------------------
+    # Suggested book
+    #
+    # In V3 the active session does not contain a book
+    # because the student starts reading before selecting
+    # or confirming a book.
+    #
+    # Therefore we use the student's current_book as
+    # the suggested book.
+    # --------------------------------------------------------
 
-    book_html = f"""
+    suggested_book = str(
+        user.get("current_book", "")
+    ).strip()
+
+    if (
+        not suggested_book
+        or suggested_book.lower() == "nan"
+    ):
+        suggested_book = ""
+
+    # --------------------------------------------------------
+    # Show suggested current book
+    # --------------------------------------------------------
+
+    if suggested_book:
+        book_html = f"""
 <div class="book-info">
 📖 Current book:
-<span class="book-info-title">{original_book}</span>
+<span class="book-info-title">{suggested_book}</span>
 </div>
 """
 
-    st.markdown(book_html, unsafe_allow_html=True)
+        st.markdown(
+            book_html,
+            unsafe_allow_html=True,
+        )
+
+        st.caption(
+            "Leave the title unchanged if this is the book "
+            "you were reading."
+        )
+
+    else:
+        st.info(
+            "📚 You don't have a current book yet. "
+            "Please enter the book you were reading."
+        )
+
+    # --------------------------------------------------------
+    # Book title input
+    # --------------------------------------------------------
 
     final_book = st.text_input(
         "Book title",
-        value=original_book,
+        value=suggested_book,
+        placeholder="e.g. Maybe You Should Talk to Someone",
     )
 
-    if st.button("✅ Confirm Reading"):
+    # --------------------------------------------------------
+    # Confirm reading
+    # --------------------------------------------------------
+
+    if st.button(
+        "✅ Confirm Reading",
+        use_container_width=True,
+    ):
+
         result = finish_reading(
             student_name=nickname,
             final_book_title=final_book.strip(),
         )
 
         if result is None:
-            st.error("Unable to save the reading session.")
+
+            st.error(
+                "Unable to save the reading session. "
+                "Please enter a book title."
+            )
+
         else:
-            today_total = get_today_reading_minutes(nickname)
-            remaining = max(goal - today_total, 0)
+
+            today_total = get_today_reading_minutes(
+                nickname
+            )
+
+            remaining = max(
+                goal - today_total,
+                0
+            )
 
             st.session_state.summary = {
                 "book": result["book"],
-                "start": result["start"].strftime("%I:%M %p"),
-                "end": result["end"].strftime("%I:%M %p"),
+                "start": result["start"].strftime(
+                    "%I:%M %p"
+                ),
+                "end": result["end"].strftime(
+                    "%I:%M %p"
+                ),
                 "minutes": result["minutes"],
                 "today_total": today_total,
                 "goal": goal,
@@ -547,7 +616,6 @@ elif st.session_state.awaiting_confirmation:
             st.session_state.show_summary = True
 
             st.rerun()
-
 
 # ============================================================
 # CURRENTLY READING
