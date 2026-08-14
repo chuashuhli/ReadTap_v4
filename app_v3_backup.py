@@ -606,36 +606,97 @@ elif st.session_state.reading:
 
 else:
     st.markdown(
-        '<div class="section-title">📚 Ready to read?</div>',
+        '<div class="section-title">📚 What are you reading today?</div>',
         unsafe_allow_html=True,
     )
 
-    st.write(
-        "Tap the button below to start your reading session."
+    option = st.radio(
+        "Choose an option",
+        (
+            "Continue previous book",
+            "Start a new book",
+        ),
     )
 
-    st.write("")
+    if option == "Continue previous book":
+        book = last_book
 
-    if st.button("📖 Start Reading", use_container_width=True):
-        start_time = datetime.now(SGT)
+        if book == "No book yet":
+            st.info(
+                "📚 You don't have a previous book yet. "
+                "Please start a new book."
+            )
+        else:
+            book_html = f"""
+<div class="book-info">
+📖 Continuing:
+<span class="book-info-title">{book}</span>
+</div>
+"""
+            st.markdown(book_html, unsafe_allow_html=True)
 
-        success = start_reading(
-            student_name=nickname,
-            nfc_id=nfc_id,
-            start_time=start_time,
+    else:
+        try:
+            reading_log = pd.read_csv("reading_log.csv")
+
+            if "book_title" in reading_log.columns:
+                recent_books = (
+                    reading_log["book_title"]
+                    .dropna()
+                    .astype(str)
+                    .drop_duplicates()
+                    .tail(5)
+                    .tolist()
+                )
+            else:
+                recent_books = []
+
+        except Exception:
+            recent_books = []
+
+        default = recent_books[-1] if recent_books else ""
+
+        book = st.text_input(
+            "Book title",
+            value=default,
+            placeholder="e.g. Harry Potter",
         )
 
-        if not success:
-            st.warning(
-                "You already have an active reading session."
+        if recent_books:
+            st.caption(
+                "📚 Recent books: "
+                + ", ".join(reversed(recent_books))
             )
 
-        else:
-            st.session_state.current_book = ""
-            st.session_state.start_time = start_time
-            st.session_state.reading = True
-            st.session_state.show_summary = False
-            st.session_state.awaiting_confirmation = False
-            st.session_state.stopped_session = None
+    if st.button("📖 Start Reading"):
+        if not book.strip():
+            st.warning("Please enter a book title.")
 
-            st.rerun()
+        elif (
+            option == "Continue previous book"
+            and book == "No book yet"
+        ):
+            st.warning("Please choose 'Start a new book'.")
+
+        else:
+            book = book.strip()
+            start_time = datetime.now(SGT)
+
+            success = start_reading(
+                student_name=nickname,
+                nfc_id=nfc_id,
+                book_title=book,
+                start_time=start_time,
+            )
+
+            if not success:
+                st.warning(
+                    "You already have an active reading session."
+                )
+            else:
+                st.session_state.current_book = book
+                st.session_state.start_time = start_time
+                st.session_state.reading = True
+                st.session_state.show_summary = False
+
+                st.rerun()

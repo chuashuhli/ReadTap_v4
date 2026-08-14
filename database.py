@@ -68,9 +68,6 @@ def parse_sgt(value):
 def get_client():
     """
     Create and cache the Google Sheets client.
-
-    This prevents Streamlit from creating a new
-    gspread client on every script rerun.
     """
 
     SCOPES = [
@@ -92,9 +89,6 @@ def get_client():
 def get_spreadsheet():
     """
     Open and cache the Reading Logs spreadsheet.
-
-    Caching this is important because opening the
-    spreadsheet causes Google Sheets API metadata reads.
     """
 
     client = get_client()
@@ -128,11 +122,8 @@ def get_sheet_records(sheet_name):
     """
     Read worksheet records and cache them briefly.
 
-    The 5-second cache prevents multiple functions
-    from downloading the same Google Sheet repeatedly
-    during a single Streamlit rerun.
-
-    The cache is cleared after any write operation.
+    The 5-second cache helps prevent repeated Google Sheets
+    reads during Streamlit reruns.
     """
 
     sheet = get_sheet(
@@ -149,6 +140,15 @@ def get_sheet_records(sheet_name):
 # ============================================================
 
 def get_active_session(student_name):
+    """
+    Find the student's current session.
+
+    Possible statuses:
+    - active
+    - awaiting_confirmation
+
+    Returns None if there is no active session.
+    """
 
     records = get_sheet_records(
         "Active Sessions"
@@ -215,16 +215,44 @@ def get_active_session(student_name):
 def start_reading(
     student_name,
     nfc_id,
-    book_title,
     start_time,
+    book_title="",
 ):
+    """
+    Start a new reading session.
+
+    V3 CHANGE:
+    The book is now optional.
+
+    The intended V3 flow is:
+
+        TAP
+        ↓
+        START READING
+        ↓
+        Book is blank
+        ↓
+        Read
+        ↓
+        TAP
+        ↓
+        STOP
+        ↓
+        Confirm/change book
+
+    book_title is kept as an optional argument so that the
+    current V2/V3 app does not immediately break while we
+    update app.py in the next step.
+    """
 
     sheet = get_sheet(
         "Active Sessions"
     )
 
-    # Check whether this student already
-    # has an active session.
+    # --------------------------------------------------------
+    # Check whether this student already has a session.
+    # --------------------------------------------------------
+
     existing = get_active_session(
         student_name
     )
@@ -232,10 +260,25 @@ def start_reading(
     if existing:
         return False
 
+    # --------------------------------------------------------
     # Make sure start time is Singapore time.
+    # --------------------------------------------------------
+
     start_time = make_sgt(
         start_time
     )
+
+    # --------------------------------------------------------
+    # Book is intentionally allowed to be blank.
+    # --------------------------------------------------------
+
+    book_title = str(
+        book_title or ""
+    ).strip()
+
+    # --------------------------------------------------------
+    # Save active session.
+    # --------------------------------------------------------
 
     sheet.append_row(
         [
@@ -244,15 +287,14 @@ def start_reading(
             start_time.strftime(
                 "%Y-%m-%d %H:%M:%S"
             ),
-            str(book_title),
+            book_title,
             "",
             "",
             "active",
         ]
     )
 
-    # Important:
-    # The Active Sessions data has changed.
+    # Active Sessions changed.
     st.cache_data.clear()
 
     return True
@@ -266,6 +308,17 @@ def stop_reading(
     student_name,
     end_time,
 ):
+    """
+    Stop the student's active reading session.
+
+    The session is NOT deleted.
+
+    It becomes:
+
+        awaiting_confirmation
+
+    so that the student can confirm or change the book.
+    """
 
     sheet = get_sheet(
         "Active Sessions"
@@ -278,7 +331,10 @@ def stop_reading(
     if not records:
         return None
 
+    # --------------------------------------------------------
     # Make sure end time is Singapore time.
+    # --------------------------------------------------------
+
     end_time = make_sgt(
         end_time
     )
@@ -297,7 +353,7 @@ def stop_reading(
             row.get("Status", "")
         ).lower().strip()
 
-        # Only stop an actually active session.
+        # Only stop an active session.
         if status != "active":
             continue
 
@@ -329,11 +385,7 @@ def stop_reading(
             minutes = 0
 
         # ----------------------------------------------------
-        # IMPORTANT:
-        # DO NOT DELETE THE ROW.
-        #
-        # We keep it so the user can confirm
-        # or change the book title.
+        # Store end time
         # ----------------------------------------------------
 
         sheet.update_acell(
@@ -343,17 +395,25 @@ def stop_reading(
             ),
         )
 
+        # ----------------------------------------------------
+        # Store duration
+        # ----------------------------------------------------
+
         sheet.update_acell(
             f"F{i}",
             minutes,
         )
+
+        # ----------------------------------------------------
+        # Keep the session for book confirmation.
+        # ----------------------------------------------------
 
         sheet.update_acell(
             f"G{i}",
             "awaiting_confirmation",
         )
 
-        # The Active Sessions data changed.
+        # Active Sessions changed.
         st.cache_data.clear()
 
         return {
@@ -377,6 +437,23 @@ def finish_reading(
     student_name,
     final_book_title,
 ):
+    """
+    Complete a stopped reading session.
+
+    The final book title is supplied here.
+
+    This allows V3 to:
+
+        START without book
+        ↓
+        READ
+        ↓
+        STOP
+        ↓
+        CONFIRM / CHANGE BOOK
+        ↓
+        SAVE
+    """
 
     active_sheet = get_sheet(
         "Active Sessions"
@@ -393,29 +470,45 @@ def finish_reading(
     if not session:
         return None
 
+    # --------------------------------------------------------
     # Only finalize a stopped session.
+    # --------------------------------------------------------
+
     if session["status"] != (
         "awaiting_confirmation"
     ):
         return None
 
     # --------------------------------------------------------
-    # Determine final book
+    # Determine final book.
+    #
+    # Priority:
+    #
+    # 1. User's confirmed book title
+    # 2. Book already stored in Active Sessions
+    #
+    # The second option preserves compatibility with the
+    # current V2/V3 flow.
     # --------------------------------------------------------
 
     book = str(
         final_book_title or ""
     ).strip()
 
-    # If user left the box empty,
-    # keep the original book.
     if not book:
         book = str(
-            session["book"]
-        )
+            session["book"] or ""
+        ).strip()
 
     # --------------------------------------------------------
-    # Parse start/end times
+    # If there is still no book, don't save an incomplete log.
+    # --------------------------------------------------------
+
+    if not book:
+        return None
+
+    # --------------------------------------------------------
+    # Parse start/end times.
     # --------------------------------------------------------
 
     start_time = parse_sgt(
@@ -433,7 +526,7 @@ def finish_reading(
         return None
 
     # --------------------------------------------------------
-    # Get minutes
+    # Get minutes.
     # --------------------------------------------------------
 
     try:
@@ -450,7 +543,7 @@ def finish_reading(
         minutes = 0
 
     # --------------------------------------------------------
-    # Get student information
+    # Get student information.
     # --------------------------------------------------------
 
     user_df = pd.read_csv(
@@ -468,7 +561,7 @@ def finish_reading(
     user = user.iloc[0]
 
     # --------------------------------------------------------
-    # Save completed reading session
+    # Save completed reading session.
     # --------------------------------------------------------
 
     reading_sheet.append_row(
@@ -491,7 +584,7 @@ def finish_reading(
     )
 
     # --------------------------------------------------------
-    # Update current book
+    # Update current book.
     # --------------------------------------------------------
 
     user_df.loc[
@@ -506,14 +599,14 @@ def finish_reading(
     )
 
     # --------------------------------------------------------
-    # Delete temporary active session
+    # Remove temporary active session.
     # --------------------------------------------------------
 
     active_sheet.delete_rows(
         session["row"]
     )
 
-    # The Google Sheets data has changed.
+    # Google Sheets data changed.
     st.cache_data.clear()
 
     return {
@@ -531,6 +624,9 @@ def finish_reading(
 def get_today_reading_minutes(
     student_name,
 ):
+    """
+    Calculate today's completed reading minutes.
+    """
 
     records = get_sheet_records(
         "Reading Logs"
@@ -597,6 +693,10 @@ def get_today_reading_minutes(
 def calculate_reading_streak(
     student_name,
 ):
+    """
+    Calculate the current reading streak
+    from completed Reading Logs.
+    """
 
     records = get_sheet_records(
         "Reading Logs"
