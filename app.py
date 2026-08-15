@@ -649,13 +649,24 @@ elif st.session_state.reading:
     st.write("")
 
     st.info(
-        "📚 Keep reading and tap Stop Reading when you're done."
+        "📚 Keep reading and tap the same NFC tag when you're done."
     )
 
-    if st.button(
+    # --------------------------------------------------------
+    # A physical NFC tap OR the manual button can stop reading
+    # --------------------------------------------------------
+
+    tap_from_url = st.query_params.get("tap") == "1"
+
+    stop_from_button = st.button(
         "🛑 Stop Reading",
         use_container_width=True,
-    ):
+    )
+
+    stop_triggered = tap_from_url or stop_from_button
+
+    if stop_triggered:
+
         end_time = datetime.now(SGT)
 
         result = stop_reading(
@@ -664,11 +675,17 @@ elif st.session_state.reading:
         )
 
         if result is None:
+
             st.error(
                 "Unable to stop the reading session."
             )
 
         else:
+
+            # Clear the NFC trigger only after processing it
+            if tap_from_url:
+                st.query_params.clear()
+
             st.session_state.reading = False
             st.session_state.start_time = None
 
