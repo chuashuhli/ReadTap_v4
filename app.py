@@ -700,10 +700,19 @@ else:
 
     st.write("")
 
-    if st.button(
-        "📡 Tap to Read",
-        use_container_width=True,
-    ):
+    tap_from_url = st.query_params.get("tap") == "1"
+
+    tap_from_button = st.button(
+    "📡 Tap to Read",
+    use_container_width=True,
+    )
+
+    tap_triggered = tap_from_url or tap_from_button
+
+    if tap_triggered:
+
+        if tap_from_url:
+            st.query_params.clear()
 
         # ----------------------------------------------------
         # Check Google Sheets for an existing session.
