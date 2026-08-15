@@ -437,23 +437,6 @@ def finish_reading(
     student_name,
     final_book_title,
 ):
-    """
-    Complete a stopped reading session.
-
-    The final book title is supplied here.
-
-    This allows V3 to:
-
-        START without book
-        ↓
-        READ
-        ↓
-        STOP
-        ↓
-        CONFIRM / CHANGE BOOK
-        ↓
-        SAVE
-    """
 
     active_sheet = get_sheet(
         "Active Sessions"
@@ -474,32 +457,38 @@ def finish_reading(
     # Only finalize a stopped session.
     # --------------------------------------------------------
 
-    if session["status"] != (
-        "awaiting_confirmation"
-    ):
+    if session["status"] != "awaiting_confirmation":
         return None
 
     # --------------------------------------------------------
-# Determine final book
-# --------------------------------------------------------
+    # Determine final book.
+    #
+    # Priority:
+    #
+    # 1. Book typed/confirmed by the user
+    # 2. Book already stored in Active Sessions
+    # 3. current_book from user.csv
+    #
+    # In V3, #3 is normally what happens when the user
+    # leaves the book unchanged.
+    # --------------------------------------------------------
 
-book = str(
-    final_book_title or ""
-).strip()
-
-# If the student entered a book title,
-# use that title.
-if not book:
     book = str(
-        session["book"] or ""
+        final_book_title or ""
     ).strip()
 
-# In V3, the Book field is intentionally blank
-# when the reading session starts.
-#
-# If the student leaves the confirmation field blank,
-# use their current_book from user.csv.
-if not book:
+    if not book:
+        book = str(
+            session.get(
+                "book",
+                ""
+            ) or ""
+        ).strip()
+
+    # --------------------------------------------------------
+    # Get student information.
+    # --------------------------------------------------------
+
     user_df = pd.read_csv(
         "user.csv"
     )
@@ -509,8 +498,19 @@ if not book:
         == str(student_name)
     ]
 
-    if not user_match.empty:
-        fallback_book = user_match.iloc[0].get(
+    if user_match.empty:
+        return None
+
+    user = user_match.iloc[0]
+
+    # --------------------------------------------------------
+    # If no book was entered and Active Sessions has no book,
+    # use the student's current_book.
+    # --------------------------------------------------------
+
+    if not book:
+
+        fallback_book = user.get(
             "current_book",
             ""
         )
@@ -520,23 +520,29 @@ if not book:
                 fallback_book
             ).strip()
 
-# --------------------------------------------------------
-# If there is still no book, don't save an incomplete log.
-# --------------------------------------------------------
+    # --------------------------------------------------------
+    # We cannot save a reading log without a book.
+    # --------------------------------------------------------
 
-if not book:
-    return None
+    if not book:
+        return None
 
     # --------------------------------------------------------
     # Parse start/end times.
     # --------------------------------------------------------
 
     start_time = parse_sgt(
-        session["start"]
+        session.get(
+            "start",
+            ""
+        )
     )
 
     end_time = parse_sgt(
-        session["end"]
+        session.get(
+            "end",
+            ""
+        )
     )
 
     if (
@@ -552,7 +558,10 @@ if not book:
     try:
         minutes = int(
             float(
-                session["minutes"] or 0
+                session.get(
+                    "minutes",
+                    0
+                ) or 0
             )
         )
 
@@ -563,25 +572,8 @@ if not book:
         minutes = 0
 
     # --------------------------------------------------------
-    # Get student information.
-    # --------------------------------------------------------
-
-    user_df = pd.read_csv(
-        "user.csv"
-    )
-
-    user = user_df[
-        user_df["nickname"].astype(str)
-        == str(student_name)
-    ]
-
-    if user.empty:
-        return None
-
-    user = user.iloc[0]
-
-    # --------------------------------------------------------
-    # Save completed reading session.
+    # Save completed reading session
+    # to Reading Logs.
     # --------------------------------------------------------
 
     reading_sheet.append_row(
@@ -604,7 +596,7 @@ if not book:
     )
 
     # --------------------------------------------------------
-    # Update current book.
+    # Update current book in user.csv.
     # --------------------------------------------------------
 
     user_df.loc[
@@ -619,15 +611,24 @@ if not book:
     )
 
     # --------------------------------------------------------
-    # Remove temporary active session.
+    # Reading is now completely finished.
+    #
+    # Remove the temporary Active Sessions row.
     # --------------------------------------------------------
 
     active_sheet.delete_rows(
         session["row"]
     )
 
-    # Google Sheets data changed.
+    # --------------------------------------------------------
+    # Clear cached Google Sheet data.
+    # --------------------------------------------------------
+
     st.cache_data.clear()
+
+    # --------------------------------------------------------
+    # Return completed session details to app.py.
+    # --------------------------------------------------------
 
     return {
         "book": book,
@@ -635,8 +636,7 @@ if not book:
         "end": end_time,
         "minutes": minutes,
     }
-
-
+    
 # ============================================================
 # TODAY'S READING
 # ============================================================

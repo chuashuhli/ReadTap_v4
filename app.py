@@ -685,7 +685,7 @@ elif st.session_state.reading:
 
 
 # ============================================================
-# START READING
+# TAP TO START / STOP
 # ============================================================
 
 else:
@@ -695,31 +695,108 @@ else:
     )
 
     st.write(
-        "Tap the button below to start your reading session."
+        "Tap below to start or stop your reading session."
     )
 
     st.write("")
 
-    if st.button("📖 Start Reading", use_container_width=True):
-        start_time = datetime.now(SGT)
+    if st.button(
+        "📡 Tap to Read",
+        use_container_width=True,
+    ):
 
-        success = start_reading(
-            student_name=nickname,
-            nfc_id=nfc_id,
-            start_time=start_time,
+        # ----------------------------------------------------
+        # Check Google Sheets for an existing session.
+        # ----------------------------------------------------
+
+        active_session = get_active_session(
+            nickname
         )
 
-        if not success:
-            st.warning(
-                "You already have an active reading session."
+        # ====================================================
+        # NO ACTIVE SESSION → START READING
+        # ====================================================
+
+        if active_session is None:
+
+            start_time = datetime.now(
+                SGT
             )
 
-        else:
-            st.session_state.current_book = ""
-            st.session_state.start_time = start_time
-            st.session_state.reading = True
-            st.session_state.show_summary = False
-            st.session_state.awaiting_confirmation = False
-            st.session_state.stopped_session = None
+            success = start_reading(
+                student_name=nickname,
+                nfc_id=nfc_id,
+                start_time=start_time,
+            )
+
+            if not success:
+
+                st.warning(
+                    "Unable to start the reading session."
+                )
+
+            else:
+
+                st.session_state.current_book = ""
+                st.session_state.start_time = start_time
+                st.session_state.reading = True
+                st.session_state.show_summary = False
+                st.session_state.awaiting_confirmation = False
+                st.session_state.stopped_session = None
+
+                st.rerun()
+
+        # ====================================================
+        # ACTIVE SESSION → STOP READING
+        # ====================================================
+
+        elif active_session["status"] == "active":
+
+            end_time = datetime.now(
+                SGT
+            )
+
+            result = stop_reading(
+                student_name=nickname,
+                end_time=end_time,
+            )
+
+            if result is None:
+
+                st.error(
+                    "Unable to stop the reading session."
+                )
+
+            else:
+
+                st.session_state.reading = False
+                st.session_state.start_time = None
+
+                st.session_state.awaiting_confirmation = True
+
+                st.session_state.stopped_session = {
+                    "book": result["book"],
+                    "start": result["start"],
+                    "end": result["end"],
+                    "minutes": result["minutes"],
+                }
+
+                st.rerun()
+
+        # ====================================================
+        # AWAITING CONFIRMATION
+        # ====================================================
+
+        elif active_session["status"] == "awaiting_confirmation":
+
+            st.session_state.reading = False
+            st.session_state.awaiting_confirmation = True
+
+            st.session_state.stopped_session = {
+                "book": active_session["book"],
+                "start": active_session["start"],
+                "end": active_session["end"],
+                "minutes": active_session["minutes"],
+            }
 
             st.rerun()
