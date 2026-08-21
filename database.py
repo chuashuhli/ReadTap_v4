@@ -130,6 +130,10 @@ def get_sheet_records(sheet_name):
         sheet_name
     )
 
+    values = sheet.get_all_values()
+
+    st.write("DEBUG Active Sessions values:", values[:5])
+
     records = sheet.get_all_records()
 
     return records
