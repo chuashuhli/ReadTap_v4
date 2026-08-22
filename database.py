@@ -94,7 +94,7 @@ def get_spreadsheet():
     client = get_client()
 
     spreadsheet = client.open(
-        "Reading Logs"
+        "Mock Sheet"
     )
 
     return spreadsheet
