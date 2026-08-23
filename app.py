@@ -176,7 +176,7 @@ def scan_isbn_from_image(image_file):
                 and isbn.startswith(("978", "979"))
                 and is_valid_isbn13(isbn)
                 ):
-                return isbn
+            return isbn
 
                 # Remove spaces and hyphens
                 isbn = (
