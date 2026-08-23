@@ -73,8 +73,76 @@ def is_valid_isbn13(isbn):
         else:
             total += value * 3
 
-    return total % 10 == 0
+        return total % 10 == 0
 
+
+def lookup_book_by_isbn(isbn):
+    """
+    Look up book information using the ISBN
+    via Google Books API.
+    """
+
+    try:
+        url = (
+            "https://www.googleapis.com/books/v1/volumes"
+            f"?q=isbn:{isbn}"
+        )
+
+        response = requests.get(
+            url,
+            timeout=10,
+        )
+
+        if response.status_code != 200:
+            return None
+
+        data = response.json()
+
+        items = data.get(
+            "items",
+            []
+        )
+
+        if not items:
+            return None
+
+        volume_info = items[0].get(
+            "volumeInfo",
+            {}
+        )
+
+        title = volume_info.get(
+            "title",
+            ""
+        ).strip()
+
+        authors = volume_info.get(
+            "authors",
+            []
+        )
+
+        author = (
+            ", ".join(authors)
+            if authors
+            else ""
+        )
+
+        if not title:
+            return None
+
+        return {
+            "isbn": isbn,
+            "title": title,
+            "author": author,
+        }
+
+    except Exception as e:
+
+        st.error(
+            f"Book lookup error: {e}"
+        )
+
+        return None
 
 def scan_isbn_from_image(image_file):
     """
