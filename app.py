@@ -156,14 +156,27 @@ def scan_isbn_from_image(image_file):
                 barcode.text or ""
                 ).strip()
 
-                st.write(
-                "Detected:",
-                raw,
-                "| Format:",
-                barcode.format,
-                "| Length:",
-                len(raw),
+                isbn = (
+                raw
+                .replace("-", "")
+                .replace(" ", "")
                 )
+
+                st.write(
+                f"🔎 Detected: {isbn} | "
+                f"Format: {barcode.format} | "
+                f"Length: {len(isbn)} | "
+                f"Starts 978/979: {isbn.startswith(('978', '979'))} | "
+                f"Valid ISBN-13: {is_valid_isbn13(isbn)}"
+                )
+
+                if (
+                len(isbn) == 13
+                and isbn.isdigit()
+                and isbn.startswith(("978", "979"))
+                and is_valid_isbn13(isbn)
+                ):
+                return isbn
 
                 # Remove spaces and hyphens
                 isbn = (
