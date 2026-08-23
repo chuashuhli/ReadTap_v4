@@ -94,7 +94,7 @@ def get_spreadsheet():
     client = get_client()
 
     spreadsheet = client.open_by_key(
-        "https://docs.google.com/spreadsheets/d/1Ch6D13qxm_gF7gXmJ1zHczA2nr9I0t3rlSCHd8_DZKY/edit?gid=0#"
+        "1Ch6D13qxm_gF7gXmJ1zHczA2nr9I0t3rlSCHd8_DZKY"
     )
 
     return spreadsheet
