@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import zxingcpp
 import requests
+from PIL import Image
+from PIL import ImageEnhance
 
 from PIL import Image
 from datetime import datetime
@@ -76,42 +78,120 @@ def is_valid_isbn13(isbn):
 
 def scan_isbn_from_image(image_file):
     """
-    Attempt to read an ISBN barcode from
-    a camera image.
-
-    Returns:
-        ISBN-13 string
-        or None
+    Try several image-processing approaches to detect
+    an ISBN-13 / EAN-13 barcode from a camera image.
     """
 
     try:
-
         image = Image.open(
             image_file
         ).convert("RGB")
 
-        image_array = np.array(
-            image
+        # ----------------------------------------------------
+        # Create several versions of the image
+        # ----------------------------------------------------
+
+        images_to_try = []
+
+        # Original
+        images_to_try.append(image)
+
+        # Larger image
+        scale = 2
+        enlarged = image.resize(
+            (
+                image.width * scale,
+                image.height * scale,
+            )
         )
 
-        barcodes = zxingcpp.read_barcodes(
-            image_array
+        images_to_try.append(
+            enlarged
         )
 
-        for barcode in barcodes:
+        # Grayscale
+        gray = enlarged.convert(
+            "L"
+        )
 
-            isbn = str(
-                barcode.text or ""
-            ).strip()
+        images_to_try.append(
+            gray
+        )
 
-            isbn = (
-                isbn
-                .replace("-", "")
-                .replace(" ", "")
+        # High contrast
+        from PIL import ImageEnhance
+
+        contrast = ImageEnhance.Contrast(
+            gray
+        ).enhance(2.0)
+
+        images_to_try.append(
+            contrast
+        )
+
+        # Sharpen
+        sharp = ImageEnhance.Sharpness(
+            contrast
+        ).enhance(2.0)
+
+        images_to_try.append(
+            sharp
+        )
+
+        # ----------------------------------------------------
+        # Try decoding every version
+        # ----------------------------------------------------
+
+        for test_image in images_to_try:
+
+            image_array = np.array(
+                test_image
             )
 
-            if is_valid_isbn13(isbn):
-                return isbn
+            barcodes = zxingcpp.read_barcodes(image_array,try_rotate=True, try_downscale=False,try_invert=True,)
+
+            for barcode in barcodes:
+
+                raw = str(
+                barcode.text or ""
+                ).strip()
+
+                st.write(
+                "Detected:",
+                raw,
+                "| Format:",
+                barcode.format,
+                "| Length:",
+                len(raw),
+                )
+
+                # Remove spaces and hyphens
+                isbn = (
+                    raw
+                    .replace("-", "")
+                    .replace(" ", "")
+                )
+
+                # ------------------------------------------------
+                # Accept EAN-13 / ISBN-13
+                # ------------------------------------------------
+
+                if (
+                    len(isbn) == 13
+                    and isbn.isdigit()
+                ):
+
+                    # ISBN-13 normally starts with
+                    # 978 or 979.
+                    if isbn.startswith(
+                        ("978", "979")
+                    ):
+
+                        if is_valid_isbn13(
+                            isbn
+                        ):
+
+                            return isbn
 
         return None
 
@@ -119,88 +199,6 @@ def scan_isbn_from_image(image_file):
 
         st.error(
             f"Barcode scanner error: {e}"
-        )
-
-        return None
-
-
-@st.cache_data(ttl=3600)
-def lookup_book_by_isbn(isbn):
-    """
-    Look up book metadata using Open Library.
-    """
-
-    url = (
-        "https://openlibrary.org/search.json"
-    )
-
-    params = {
-        "q": f"isbn:{isbn}",
-        "fields": "title,author_name,isbn",
-        "limit": 1,
-    }
-
-    headers = {
-        "User-Agent": (
-            "ReadTap/3.0 "
-            "(reading tracker)"
-        )
-    }
-
-    try:
-
-        response = requests.get(
-            url,
-            params=params,
-            headers=headers,
-            timeout=10,
-        )
-
-        response.raise_for_status()
-
-        data = response.json()
-
-        docs = data.get(
-            "docs",
-            []
-        )
-
-        if not docs:
-            return None
-
-        book = docs[0]
-
-        title = str(
-            book.get(
-                "title",
-                ""
-            )
-        ).strip()
-
-        authors = book.get(
-            "author_name",
-            []
-        )
-
-        author = (
-            str(authors[0]).strip()
-            if authors
-            else ""
-        )
-
-        if not title:
-            return None
-
-        return {
-            "title": title,
-            "author": author,
-            "isbn": isbn,
-        }
-
-    except Exception as e:
-
-        st.error(
-            f"Book lookup error: {e}"
         )
 
         return None
@@ -939,7 +937,7 @@ elif st.session_state.awaiting_confirmation:
 
         camera_image = st.camera_input(
             "Take a photo of the ISBN barcode",
-            key="isbn_camera",
+            key="isbn_camera",resolution="1080p",
         )
 
         if camera_image:
