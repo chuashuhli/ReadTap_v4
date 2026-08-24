@@ -78,11 +78,25 @@ def is_valid_isbn13(isbn):
 
 def lookup_book_by_isbn(isbn):
     """
-    Look up book information using the ISBN
-    via Google Books API.
+    Look up book information using the ISBN.
+
+    Tries Google Books first,
+    then Open Library as a fallback.
     """
 
+    isbn = (
+        str(isbn)
+        .replace("-", "")
+        .replace(" ", "")
+        .strip()
+    )
+
+    # ========================================================
+    # GOOGLE BOOKS
+    # ========================================================
+
     try:
+
         url = (
             "https://www.googleapis.com/books/v1/volumes"
             f"?q=isbn:{isbn}"
@@ -93,67 +107,125 @@ def lookup_book_by_isbn(isbn):
             timeout=10,
         )
 
-        if response.status_code != 200:
-            return None
+        if response.status_code == 200:
 
-        data = response.json()
+            data = response.json()
 
-        items = data.get(
-            "items",
-            []
-        )
+            items = data.get(
+                "items",
+                []
+            )
 
-        if not items:
-            return None
+            if items:
 
-        volume_info = items[0].get(
-            "volumeInfo",
-            {}
-        )
+                volume_info = items[0].get(
+                    "volumeInfo",
+                    {}
+                )
 
-        title = volume_info.get(
-            "title",
-            ""
-        ).strip()
+                title = str(
+                    volume_info.get(
+                        "title",
+                        ""
+                    )
+                ).strip()
 
-        authors = volume_info.get(
-            "authors",
-            []
-        )
+                authors = volume_info.get(
+                    "authors",
+                    []
+                )
 
-        author = (
-            ", ".join(authors)
-            if authors
-            else ""
-        )
+                author = (
+                    ", ".join(authors)
+                    if authors
+                    else ""
+                )
 
-        if not title:
-            return None
+                if title:
 
-        return {
-            "isbn": isbn,
-            "title": title,
-            "author": author,
-        }
+                    return {
+                        "isbn": isbn,
+                        "title": title,
+                        "author": author,
+                    }
 
-    except Exception as e:
+    except Exception:
+        pass
 
-        st.error(
-            f"Book lookup error: {e}"
-        )
 
-        return None
-
-def scan_isbn_from_image(image_file):
-    """
-    Try several image-processing approaches to detect
-    an ISBN-13 / EAN-13 barcode from a camera image.
-    """
+    # ========================================================
+    # OPEN LIBRARY FALLBACK
+    # ========================================================
 
     try:
-        image = Image.open(
-            image_file
-        ).convert("RGB")
+
+        url = (
+            "https://openlibrary.org/api/books"
+            f"?bibkeys=ISBN:{isbn}"
+            "&format=json"
+            "&jscmd=data"
+        )
+
+        response = requests.get(
+            url,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+
+            data = response.json()
+
+            book = data.get(
+                f"ISBN:{isbn}"
+            )
+
+            if book:
+
+                title = str(
+                    book.get(
+                        "title",
+                        ""
+                    )
+                ).strip()
+
+                authors_data = book.get(
+                    "authors",
+                    []
+                )
+
+                authors = []
+
+                for author_data in authors_data:
+
+                    name = author_data.get(
+                        "name",
+                        ""
+                    ).strip()
+
+                    if name:
+                        authors.append(name)
+
+                author = ", ".join(
+                    authors
+                )
+
+                if title:
+
+                    return {
+                        "isbn": isbn,
+                        "title": title,
+                        "author": author,
+                    }
+
+    except Exception:
+        pass
+
+
+    # ========================================================
+    # NOTHING FOUND
+    # ========================================================
+
+    return None
 
         # ----------------------------------------------------
         # Create several versions of the image
