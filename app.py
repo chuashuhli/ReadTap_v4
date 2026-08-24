@@ -76,12 +76,17 @@ def is_valid_isbn13(isbn):
 
     return total % 10 == 0
 
+
+# ============================================================
+# LOOK UP BOOK USING ISBN
+# ============================================================
+
 def lookup_book_by_isbn(isbn):
     """
-    Look up book information using the ISBN.
+    Look up a book using its ISBN.
 
-    Tries Google Books first,
-    then Open Library as a fallback.
+    First tries Google Books.
+    If that fails, tries Open Library.
     """
 
     isbn = (
@@ -91,9 +96,9 @@ def lookup_book_by_isbn(isbn):
         .strip()
     )
 
-    # ========================================================
+    # --------------------------------------------------------
     # GOOGLE BOOKS
-    # ========================================================
+    # --------------------------------------------------------
 
     try:
 
@@ -153,9 +158,9 @@ def lookup_book_by_isbn(isbn):
         pass
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # OPEN LIBRARY FALLBACK
-    # ========================================================
+    # --------------------------------------------------------
 
     try:
 
@@ -197,9 +202,11 @@ def lookup_book_by_isbn(isbn):
 
                 for author_data in authors_data:
 
-                    name = author_data.get(
-                        "name",
-                        ""
+                    name = str(
+                        author_data.get(
+                            "name",
+                            ""
+                        )
                     ).strip()
 
                     if name:
@@ -221,126 +228,199 @@ def lookup_book_by_isbn(isbn):
         pass
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # NOTHING FOUND
-    # ========================================================
+    # --------------------------------------------------------
 
     return None
 
-    # ----------------------------------------------------
-    # Create several versions of the image
-    # ----------------------------------------------------
 
-    images_to_try = []
+# ============================================================
+# SCAN ISBN BARCODE FROM IMAGE
+# ============================================================
 
-    # Original
-    images_to_try.append(image)
+def scan_isbn_from_image(image_file):
+    """
+    Scan an image for an EAN-13 / ISBN-13 barcode.
 
-    # Larger image
-    scale = 2
+    Tries several versions of the image to improve
+    detection reliability.
+    """
 
-    enlarged = image.resize(
-        (
-            image.width * scale,
-            image.height * scale,
-        )
-    )
+    try:
 
-    images_to_try.append(
-        enlarged
-    )
+        # ----------------------------------------------------
+        # OPEN IMAGE
+        # ----------------------------------------------------
 
-    # Grayscale
-    gray = enlarged.convert(
-        "L"
-    )
+        image = Image.open(
+            image_file
+        ).convert("RGB")
 
-    images_to_try.append(
-        gray
-    )
 
-    # High contrast
-    contrast = ImageEnhance.Contrast(
-        gray
-    ).enhance(2.0)
+        # ----------------------------------------------------
+        # CREATE IMAGE VERSIONS
+        # ----------------------------------------------------
 
-    images_to_try.append(
-        contrast
-    )
+        images_to_try = []
 
-    # Sharpen
-    sharp = ImageEnhance.Sharpness(
-        contrast
-    ).enhance(2.0)
 
-    images_to_try.append(
-        sharp
-    )
-
-    # ----------------------------------------------------
-    # Try decoding every version
-    # ----------------------------------------------------
-
-    for test_image in images_to_try:
-
-        image_array = np.array(
-            test_image
+        # Original image
+        images_to_try.append(
+            image
         )
 
-        barcodes = zxingcpp.read_barcodes(
-            image_array,
-            try_rotate=True,
-            try_downscale=False,
-            try_invert=True,
+
+        # ----------------------------------------------------
+        # Enlarged image
+        # ----------------------------------------------------
+
+        scale = 2
+
+        enlarged = image.resize(
+            (
+                image.width * scale,
+                image.height * scale,
+            )
         )
 
-        for barcode in barcodes:
+        images_to_try.append(
+            enlarged
+        )
 
-            raw = str(
-                barcode.text or ""
-            ).strip()
 
-            isbn = (
-                raw
-                .replace("-", "")
-                .replace(" ", "")
+        # ----------------------------------------------------
+        # Grayscale
+        # ----------------------------------------------------
+
+        gray = enlarged.convert(
+            "L"
+        )
+
+        images_to_try.append(
+            gray
+        )
+
+
+        # ----------------------------------------------------
+        # High contrast
+        # ----------------------------------------------------
+
+        contrast = ImageEnhance.Contrast(
+            gray
+        ).enhance(2.0)
+
+        images_to_try.append(
+            contrast
+        )
+
+
+        # ----------------------------------------------------
+        # Sharpened
+        # ----------------------------------------------------
+
+        sharp = ImageEnhance.Sharpness(
+            contrast
+        ).enhance(2.0)
+
+        images_to_try.append(
+            sharp
+        )
+
+
+        # ----------------------------------------------------
+        # TRY EACH IMAGE VERSION
+        # ----------------------------------------------------
+
+        for test_image in images_to_try:
+
+            image_array = np.array(
+                test_image
             )
 
-            # Temporary diagnostic information
-            st.write(
-                f"🔎 Detected: {isbn} | "
-                f"Format: {barcode.format} | "
-                f"Length: {len(isbn)} | "
-                f"Starts 978/979: "
-                f"{isbn.startswith(('978', '979'))} | "
-                f"Valid ISBN-13: "
-                f"{is_valid_isbn13(isbn)}"
+
+            # ------------------------------------------------
+            # ZXING BARCODE DETECTION
+            # ------------------------------------------------
+
+            barcodes = zxingcpp.read_barcodes(
+                image_array,
+                try_rotate=True,
+                try_downscale=False,
+                try_invert=True,
             )
 
+
             # ------------------------------------------------
-            # Accept valid ISBN-13
+            # CHECK EVERY DETECTED BARCODE
             # ------------------------------------------------
 
-            if (
-                len(isbn) == 13
-                and isbn.isdigit()
-                and isbn.startswith(
-                    ("978", "979")
+            for barcode in barcodes:
+
+                raw = str(
+                    barcode.text or ""
+                ).strip()
+
+
+                # Remove spaces and hyphens
+                isbn = (
+                    raw
+                    .replace("-", "")
+                    .replace(" ", "")
                 )
-                and is_valid_isbn13(
-                    isbn
+
+
+                # ------------------------------------------------
+                # DEBUG INFORMATION
+                # ------------------------------------------------
+
+                st.write(
+                    f"🔎 Detected: {isbn} | "
+                    f"Format: {barcode.format} | "
+                    f"Length: {len(isbn)} | "
+                    f"Starts 978/979: "
+                    f"{isbn.startswith(('978', '979'))} | "
+                    f"Valid ISBN-13: "
+                    f"{is_valid_isbn13(isbn)}"
                 )
-            ):                return isbn
+
+
+                # ------------------------------------------------
+                # ACCEPT VALID ISBN-13
+                # ------------------------------------------------
+
+                if (
+                    len(isbn) == 13
+                    and isbn.isdigit()
+                    and isbn.startswith(
+                        ("978", "979")
+                    )
+                    and is_valid_isbn13(
+                        isbn
+                    )
+                ):
+
+                    return isbn
+
+
+        # ----------------------------------------------------
+        # NOTHING VALID FOUND
+        # ----------------------------------------------------
 
         return None
-        
-            except Exception as e:
 
-    st.error(
-        f"Barcode scanner error: {e}"
-    )
 
-    return None
+    # --------------------------------------------------------
+    # ERROR HANDLING
+    # --------------------------------------------------------
+
+    except Exception as e:
+
+        st.error(
+            f"Barcode scanner error: {e}"
+        )
+
+        return None
 
 
 # ============================================================
