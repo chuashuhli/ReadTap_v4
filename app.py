@@ -277,45 +277,45 @@ def lookup_book_by_isbn(isbn):
         sharp
     )
 
-        # ----------------------------------------------------
-        # Try decoding every version
-        # ----------------------------------------------------
+    # ----------------------------------------------------
+    # Try decoding every version
+    # ----------------------------------------------------
 
-        for test_image in images_to_try:
+    for test_image in images_to_try:
 
-            image_array = np.array(
-                test_image
+        image_array = np.array(
+            test_image
+        )
+
+        barcodes = zxingcpp.read_barcodes(
+            image_array,
+            try_rotate=True,
+            try_downscale=False,
+            try_invert=True,
+        )
+
+        for barcode in barcodes:
+
+            raw = str(
+                barcode.text or ""
+            ).strip()
+
+            isbn = (
+                raw
+                .replace("-", "")
+                .replace(" ", "")
             )
 
-            barcodes = zxingcpp.read_barcodes(
-                image_array,
-                try_rotate=True,
-                try_downscale=False,
-                try_invert=True,
+            # Temporary diagnostic information
+            st.write(
+                f"🔎 Detected: {isbn} | "
+                f"Format: {barcode.format} | "
+                f"Length: {len(isbn)} | "
+                f"Starts 978/979: "
+                f"{isbn.startswith(('978', '979'))} | "
+                f"Valid ISBN-13: "
+                f"{is_valid_isbn13(isbn)}"
             )
-
-            for barcode in barcodes:
-
-                raw = str(
-                    barcode.text or ""
-                ).strip()
-
-                isbn = (
-                    raw
-                    .replace("-", "")
-                    .replace(" ", "")
-                )
-
-                # Temporary diagnostic information
-                st.write(
-                    f"🔎 Detected: {isbn} | "
-                    f"Format: {barcode.format} | "
-                    f"Length: {len(isbn)} | "
-                    f"Starts 978/979: "
-                    f"{isbn.startswith(('978', '979'))} | "
-                    f"Valid ISBN-13: "
-                    f"{is_valid_isbn13(isbn)}"
-                )
 
                 # ------------------------------------------------
                 # Accept valid ISBN-13
