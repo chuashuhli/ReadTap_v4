@@ -66,6 +66,7 @@ def is_valid_isbn13(isbn):
     total = 0
 
     for i, digit in enumerate(isbn):
+
         value = int(digit)
 
         if i % 2 == 0:
@@ -73,8 +74,7 @@ def is_valid_isbn13(isbn):
         else:
             total += value * 3
 
-        return total % 10 == 0
-
+    return total % 10 == 0
 
 def lookup_book_by_isbn(isbn):
     """
