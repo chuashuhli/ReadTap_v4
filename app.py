@@ -335,13 +335,13 @@ def lookup_book_by_isbn(isbn):
 
         return None
 
-    except Exception as e:
+except Exception as e:
 
-        st.error(
-            f"Barcode scanner error: {e}"
-        )
+    st.error(
+        f"Barcode scanner error: {e}"
+    )
 
-        return None
+    return None
 
 
 # ============================================================
