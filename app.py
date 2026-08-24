@@ -227,55 +227,55 @@ def lookup_book_by_isbn(isbn):
 
     return None
 
-        # ----------------------------------------------------
-        # Create several versions of the image
-        # ----------------------------------------------------
+    # ----------------------------------------------------
+    # Create several versions of the image
+    # ----------------------------------------------------
 
-        images_to_try = []
+    images_to_try = []
 
-        # Original
-        images_to_try.append(image)
+    # Original
+    images_to_try.append(image)
 
-        # Larger image
-        scale = 2
+    # Larger image
+    scale = 2
 
-        enlarged = image.resize(
-            (
-                image.width * scale,
-                image.height * scale,
-            )
+    enlarged = image.resize(
+        (
+            image.width * scale,
+            image.height * scale,
         )
+    )
 
-        images_to_try.append(
-            enlarged
-        )
+    images_to_try.append(
+        enlarged
+    )
 
-        # Grayscale
-        gray = enlarged.convert(
-            "L"
-        )
+    # Grayscale
+    gray = enlarged.convert(
+        "L"
+    )
 
-        images_to_try.append(
-            gray
-        )
+    images_to_try.append(
+        gray
+    )
 
-        # High contrast
-        contrast = ImageEnhance.Contrast(
-            gray
-        ).enhance(2.0)
+    # High contrast
+    contrast = ImageEnhance.Contrast(
+        gray
+    ).enhance(2.0)
 
-        images_to_try.append(
-            contrast
-        )
+    images_to_try.append(
+        contrast
+    )
 
-        # Sharpen
-        sharp = ImageEnhance.Sharpness(
-            contrast
-        ).enhance(2.0)
+    # Sharpen
+    sharp = ImageEnhance.Sharpness(
+        contrast
+    ).enhance(2.0)
 
-        images_to_try.append(
-            sharp
-        )
+    images_to_try.append(
+        sharp
+    )
 
         # ----------------------------------------------------
         # Try decoding every version
