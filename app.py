@@ -317,21 +317,21 @@ def lookup_book_by_isbn(isbn):
                 f"{is_valid_isbn13(isbn)}"
             )
 
-                # ------------------------------------------------
-                # Accept valid ISBN-13
-                # ------------------------------------------------
+            # ------------------------------------------------
+            # Accept valid ISBN-13
+            # ------------------------------------------------
 
-                if (
-                    len(isbn) == 13
-                    and isbn.isdigit()
-                    and isbn.startswith(
-                        ("978", "979")
-                    )
-                    and is_valid_isbn13(
-                        isbn
-                    )
-                ):
-                    return isbn
+            if (
+                len(isbn) == 13
+                and isbn.isdigit()
+                and isbn.startswith(
+                    ("978", "979")
+                )
+                and is_valid_isbn13(
+                    isbn
+                )
+            ):
+                 return isbn
 
         return None
 
