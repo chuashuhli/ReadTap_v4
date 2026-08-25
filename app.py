@@ -3,12 +3,10 @@ import pandas as pd
 import numpy as np
 import zxingcpp
 import requests
-from PIL import Image
-from PIL import ImageEnhance
+import pytesseract
 
 from PIL import Image
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from PIL import ImageEnhance
 
 from database import (
     calculate_reading_streak,
@@ -407,6 +405,321 @@ def scan_isbn_from_image(image_file):
 
         return None
 
+# ============================================================
+# OCR BOOK TEXT FROM IMAGE
+# ============================================================
+
+def extract_text_from_image(image_file):
+    """
+    Extract text from a book cover or inside page using OCR.
+    """
+
+    try:
+
+        # ----------------------------------------------------
+        # OPEN IMAGE
+        # ----------------------------------------------------
+
+        image = Image.open(
+            image_file
+        ).convert("RGB")
+
+
+        # ----------------------------------------------------
+        # ENLARGE IMAGE
+        # ----------------------------------------------------
+
+        scale = 2
+
+        image = image.resize(
+            (
+                image.width * scale,
+                image.height * scale,
+            )
+        )
+
+
+        # ----------------------------------------------------
+        # GRAYSCALE
+        # ----------------------------------------------------
+
+        gray = image.convert("L")
+
+
+        # ----------------------------------------------------
+        # IMPROVE CONTRAST
+        # ----------------------------------------------------
+
+        contrast = ImageEnhance.Contrast(
+            gray
+        ).enhance(2.0)
+
+
+        # ----------------------------------------------------
+        # SHARPEN
+        # ----------------------------------------------------
+
+        sharp = ImageEnhance.Sharpness(
+            contrast
+        ).enhance(2.0)
+
+
+        # ----------------------------------------------------
+        # OCR
+        # ----------------------------------------------------
+
+        text = pytesseract.image_to_string(
+            sharp
+        )
+
+
+        return text.strip()
+
+
+    except Exception as e:
+
+        st.error(
+            f"OCR error: {e}"
+        )
+
+        return ""
+
+
+# ============================================================
+# SEARCH BOOKS USING OCR TEXT
+# ============================================================
+
+def search_books_by_text(text, limit=5):
+    """
+    Search Google Books and Open Library using OCR text.
+    """
+
+    if not text:
+        return []
+
+
+    # --------------------------------------------------------
+    # CLEAN OCR TEXT
+    # --------------------------------------------------------
+
+    words = text.split()
+
+    query = " ".join(
+        words[:40]
+    ).strip()
+
+
+    if not query:
+        return []
+
+
+    results = []
+
+
+    # ========================================================
+    # GOOGLE BOOKS
+    # ========================================================
+
+    try:
+
+        url = (
+            "https://www.googleapis.com/books/v1/volumes"
+        )
+
+        params = {
+            "q": query,
+            "maxResults": limit,
+        }
+
+        response = requests.get(
+            url,
+            params=params,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+
+            data = response.json()
+
+            items = data.get(
+                "items",
+                []
+            )
+
+            for item in items:
+
+                volume_info = item.get(
+                    "volumeInfo",
+                    {}
+                )
+
+                title = str(
+                    volume_info.get(
+                        "title",
+                        ""
+                    )
+                ).strip()
+
+                authors = volume_info.get(
+                    "authors",
+                    []
+                )
+
+                author = (
+                    ", ".join(authors)
+                    if authors
+                    else ""
+                )
+
+                image_links = volume_info.get(
+                    "imageLinks",
+                    {}
+                )
+
+                cover_url = (
+                    image_links.get(
+                        "thumbnail",
+                        ""
+                    )
+                )
+
+                if title:
+
+                    results.append(
+                        {
+                            "title": title,
+                            "author": author,
+                            "isbn": "",
+                            "cover_url": cover_url,
+                            "source": "Google Books",
+                        }
+                    )
+
+
+    except Exception:
+        pass
+
+
+    # ========================================================
+    # OPEN LIBRARY
+    # ========================================================
+
+    try:
+
+        url = (
+            "https://openlibrary.org/search.json"
+        )
+
+        params = {
+            "q": query,
+            "limit": limit,
+        }
+
+        response = requests.get(
+            url,
+            params=params,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+
+            data = response.json()
+
+            docs = data.get(
+                "docs",
+                []
+            )
+
+            for doc in docs:
+
+                title = str(
+                    doc.get(
+                        "title",
+                        ""
+                    )
+                ).strip()
+
+                authors = doc.get(
+                    "author_name",
+                    []
+                )
+
+                author = (
+                    ", ".join(
+                        authors[:2]
+                    )
+                    if authors
+                    else ""
+                )
+
+                cover_id = doc.get(
+                    "cover_i"
+                )
+
+                cover_url = ""
+
+                if cover_id:
+
+                    cover_url = (
+                        "https://covers.openlibrary.org/"
+                        f"b/id/{cover_id}-M.jpg"
+                    )
+
+                isbn_list = doc.get(
+                    "isbn",
+                    []
+                )
+
+                isbn = (
+                    str(isbn_list[0])
+                    if isbn_list
+                    else ""
+                )
+
+                if title:
+
+                    results.append(
+                        {
+                            "title": title,
+                            "author": author,
+                            "isbn": isbn,
+                            "cover_url": cover_url,
+                            "source": "Open Library",
+                        }
+                    )
+
+
+    except Exception:
+        pass
+
+
+    # ========================================================
+    # REMOVE DUPLICATES
+    # ========================================================
+
+    unique_results = []
+
+    seen = set()
+
+    for book in results:
+
+        key = (
+            book["title"].lower().strip(),
+            book["author"].lower().strip(),
+        )
+
+        if key not in seen:
+
+            seen.add(key)
+
+            unique_results.append(
+                book
+            )
+
+
+    return unique_results[:limit]
+
+
 
 # ============================================================
 # CUSTOM CSS
@@ -698,6 +1011,11 @@ defaults = {
     # ISBN scanner
     "scanning_isbn": False,
     "scanned_book": None,
+
+    # Book identification
+    "scanning_cover": False,
+    "scanning_page": False,
+    "book_candidates": [],
 }
 
 for key, value in defaults.items():
@@ -1224,6 +1542,84 @@ elif st.session_state.awaiting_confirmation:
 
             st.rerun()
 
+ # ========================================================
+    # COVER SCANNER
+    # ========================================================
+
+    elif st.session_state.scanning_cover:
+
+        st.markdown(
+            "### 📕 Scan Book Cover"
+        )
+
+        st.caption(
+            "Take a clear photo of the front cover "
+            "so ReadTap can identify the title."
+        )
+
+        cover_image = st.camera_input(
+            "Take a photo of the book cover",
+            key="cover_camera",
+            resolution="1080p",
+        )
+
+        if cover_image:
+
+            with st.spinner(
+                "🔎 Reading the book cover..."
+            ):
+
+                cover_text = extract_text_from_image(
+                    cover_image
+                )
+
+            if cover_text:
+
+                with st.spinner(
+                    "📚 Looking for your book..."
+                ):
+
+                    candidates = search_books_by_text(
+                        cover_text
+                    )
+
+                if candidates:
+
+                    st.session_state.book_candidates = (
+                        candidates
+                    )
+
+                    st.session_state.scanning_cover = False
+
+                    st.rerun()
+
+                else:
+
+                    st.warning(
+                        "I couldn't identify this book "
+                        "from the cover."
+                    )
+
+                    st.caption(
+                        "Try taking a clearer photo with "
+                        "the title visible."
+                    )
+
+            else:
+
+                st.warning(
+                    "I couldn't read any text from "
+                    "the cover."
+                )
+
+        if st.button(
+            "← Back",
+            use_container_width=True,
+        ):
+
+            st.session_state.scanning_cover = False
+
+            st.rerun()
 
     # ========================================================
     # BOOK FOUND
@@ -1408,7 +1804,44 @@ elif st.session_state.awaiting_confirmation:
 
             st.session_state.scanning_isbn = True
 
-            st.rerun()
+            st.rerun()# ====================================================
+# BOOK SCANNING OPTIONS
+# ====================================================
+
+if st.button(
+    "📷 Scan ISBN",
+    use_container_width=True,
+):
+
+    st.session_state.scanning_isbn = True
+    st.session_state.scanning_cover = False
+    st.session_state.scanning_page = False
+
+    st.rerun()
+
+
+if st.button(
+    "📕 Scan Book Cover",
+    use_container_width=True,
+):
+
+    st.session_state.scanning_cover = True
+    st.session_state.scanning_isbn = False
+    st.session_state.scanning_page = False
+
+    st.rerun()
+
+
+if st.button(
+    "📄 Scan Inside Page",
+    use_container_width=True,
+):
+
+    st.session_state.scanning_page = True
+    st.session_state.scanning_isbn = False
+    st.session_state.scanning_cover = False
+
+    st.rerun()
 
 
         st.write("")
