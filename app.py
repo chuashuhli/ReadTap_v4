@@ -371,21 +371,6 @@ def scan_isbn_from_image(image_file):
 
 
                 # ------------------------------------------------
-                # DEBUG INFORMATION
-                # ------------------------------------------------
-
-                st.write(
-                    f"🔎 Detected: {isbn} | "
-                    f"Format: {barcode.format} | "
-                    f"Length: {len(isbn)} | "
-                    f"Starts 978/979: "
-                    f"{isbn.startswith(('978', '979'))} | "
-                    f"Valid ISBN-13: "
-                    f"{is_valid_isbn13(isbn)}"
-                )
-
-
-                # ------------------------------------------------
                 # ACCEPT VALID ISBN-13
                 # ------------------------------------------------
 
