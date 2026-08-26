@@ -1847,77 +1847,77 @@ if st.button(
     st.write("")
 
 
-        # ====================================================
-        # MANUAL ENTRY
-        # ====================================================
+    # ====================================================
+    # MANUAL ENTRY
+    # ====================================================
 
-        st.markdown(
-            "**Or enter the title manually:**"
+    st.markdown(
+        "**Or enter the title manually:**"
+    )
+
+    final_book = st.text_input(
+        "Book title",
+        value=suggested_book,
+        placeholder=(
+            "e.g. Maybe You Should Talk to Someone"
+        ),
+    )
+
+
+    if st.button(
+        "✅ Confirm Reading",
+        use_container_width=True,
+    ):
+
+        result = finish_reading(
+            student_name=nickname,
+            final_book_title=final_book.strip(),
         )
 
-        final_book = st.text_input(
-            "Book title",
-            value=suggested_book,
-            placeholder=(
-                "e.g. Maybe You Should Talk to Someone"
-            ),
-        )
+        if result is None:
 
-
-        if st.button(
-            "✅ Confirm Reading",
-            use_container_width=True,
-        ):
-
-            result = finish_reading(
-                student_name=nickname,
-                final_book_title=final_book.strip(),
+            st.error(
+                "Unable to save the reading session. "
+                "Please enter a book title."
             )
 
-            if result is None:
+        else:
 
-                st.error(
-                    "Unable to save the reading session. "
-                    "Please enter a book title."
+            today_total = (
+                get_today_reading_minutes(
+                    nickname
                 )
+            )
 
-            else:
+            remaining = max(
+                goal - today_total,
+                0
+            )
 
-                today_total = (
-                    get_today_reading_minutes(
-                        nickname
-                    )
-                )
+            st.session_state.summary = {
+                "book": result["book"],
+                "start": result["start"].strftime(
+                    "%I:%M %p"
+                ),
+                "end": result["end"].strftime(
+                    "%I:%M %p"
+                ),
+                "minutes": result["minutes"],
+                "today_total": today_total,
+                "goal": goal,
+                "remaining": remaining,
+            }
 
-                remaining = max(
-                    goal - today_total,
-                    0
-                )
+            st.session_state.scanned_book = None
+            st.session_state.scanning_isbn = False
+            st.session_state.awaiting_confirmation = False
+            st.session_state.stopped_session = None
+            st.session_state.reading = False
+            st.session_state.start_time = None
+            st.session_state.current_book = ""
+            st.session_state.show_summary = True
 
-                st.session_state.summary = {
-                    "book": result["book"],
-                    "start": result["start"].strftime(
-                        "%I:%M %p"
-                    ),
-                    "end": result["end"].strftime(
-                        "%I:%M %p"
-                    ),
-                    "minutes": result["minutes"],
-                    "today_total": today_total,
-                    "goal": goal,
-                    "remaining": remaining,
-                }
-
-                st.session_state.scanned_book = None
-                st.session_state.scanning_isbn = False
-                st.session_state.awaiting_confirmation = False
-                st.session_state.stopped_session = None
-                st.session_state.reading = False
-                st.session_state.start_time = None
-                st.session_state.current_book = ""
-                st.session_state.show_summary = True
-
-                st.rerun()
+            st.rerun()
 
 
 # ============================================================
