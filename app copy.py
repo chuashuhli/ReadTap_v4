@@ -7,7 +7,8 @@ import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from PIL import Image, ImageEnhance
+from PIL import Image
+from PIL import ImageEnhance
 
 from database import (
     calculate_reading_streak,
@@ -65,6 +66,7 @@ def is_valid_isbn13(isbn):
     total = 0
 
     for i, digit in enumerate(isbn):
+
         value = int(digit)
 
         if i % 2 == 0:
@@ -99,6 +101,7 @@ def lookup_book_by_isbn(isbn):
     # --------------------------------------------------------
 
     try:
+
         url = (
             "https://www.googleapis.com/books/v1/volumes"
             f"?q=isbn:{isbn}"
@@ -110,6 +113,7 @@ def lookup_book_by_isbn(isbn):
         )
 
         if response.status_code == 200:
+
             data = response.json()
 
             items = data.get(
@@ -118,6 +122,7 @@ def lookup_book_by_isbn(isbn):
             )
 
             if items:
+
                 volume_info = items[0].get(
                     "volumeInfo",
                     {}
@@ -142,6 +147,7 @@ def lookup_book_by_isbn(isbn):
                 )
 
                 if title:
+
                     return {
                         "isbn": isbn,
                         "title": title,
@@ -157,6 +163,7 @@ def lookup_book_by_isbn(isbn):
     # --------------------------------------------------------
 
     try:
+
         url = (
             "https://openlibrary.org/api/books"
             f"?bibkeys=ISBN:{isbn}"
@@ -170,6 +177,7 @@ def lookup_book_by_isbn(isbn):
         )
 
         if response.status_code == 200:
+
             data = response.json()
 
             book = data.get(
@@ -177,6 +185,7 @@ def lookup_book_by_isbn(isbn):
             )
 
             if book:
+
                 title = str(
                     book.get(
                         "title",
@@ -192,6 +201,7 @@ def lookup_book_by_isbn(isbn):
                 authors = []
 
                 for author_data in authors_data:
+
                     name = str(
                         author_data.get(
                             "name",
@@ -202,9 +212,12 @@ def lookup_book_by_isbn(isbn):
                     if name:
                         authors.append(name)
 
-                author = ", ".join(authors)
+                author = ", ".join(
+                    authors
+                )
 
                 if title:
+
                     return {
                         "isbn": isbn,
                         "title": title,
@@ -214,6 +227,10 @@ def lookup_book_by_isbn(isbn):
     except Exception:
         pass
 
+
+    # --------------------------------------------------------
+    # NOTHING FOUND
+    # --------------------------------------------------------
 
     return None
 
@@ -231,6 +248,7 @@ def scan_isbn_from_image(image_file):
     """
 
     try:
+
         # ----------------------------------------------------
         # OPEN IMAGE
         # ----------------------------------------------------
@@ -246,11 +264,17 @@ def scan_isbn_from_image(image_file):
 
         images_to_try = []
 
-        # Original
-        images_to_try.append(image)
+
+        # Original image
+        images_to_try.append(
+            image
+        )
 
 
-        # Enlarged
+        # ----------------------------------------------------
+        # Enlarged image
+        # ----------------------------------------------------
+
         scale = 2
 
         enlarged = image.resize(
@@ -260,29 +284,48 @@ def scan_isbn_from_image(image_file):
             )
         )
 
-        images_to_try.append(enlarged)
+        images_to_try.append(
+            enlarged
+        )
 
 
+        # ----------------------------------------------------
         # Grayscale
-        gray = enlarged.convert("L")
+        # ----------------------------------------------------
 
-        images_to_try.append(gray)
+        gray = enlarged.convert(
+            "L"
+        )
+
+        images_to_try.append(
+            gray
+        )
 
 
+        # ----------------------------------------------------
         # High contrast
+        # ----------------------------------------------------
+
         contrast = ImageEnhance.Contrast(
             gray
         ).enhance(2.0)
 
-        images_to_try.append(contrast)
+        images_to_try.append(
+            contrast
+        )
 
 
-        # Sharpen
+        # ----------------------------------------------------
+        # Sharpened
+        # ----------------------------------------------------
+
         sharp = ImageEnhance.Sharpness(
             contrast
         ).enhance(2.0)
 
-        images_to_try.append(sharp)
+        images_to_try.append(
+            sharp
+        )
 
 
         # ----------------------------------------------------
@@ -295,6 +338,11 @@ def scan_isbn_from_image(image_file):
                 test_image
             )
 
+
+            # ------------------------------------------------
+            # ZXING BARCODE DETECTION
+            # ------------------------------------------------
+
             barcodes = zxingcpp.read_barcodes(
                 image_array,
                 try_rotate=True,
@@ -304,7 +352,7 @@ def scan_isbn_from_image(image_file):
 
 
             # ------------------------------------------------
-            # CHECK DETECTED BARCODES
+            # CHECK EVERY DETECTED BARCODE
             # ------------------------------------------------
 
             for barcode in barcodes:
@@ -313,11 +361,18 @@ def scan_isbn_from_image(image_file):
                     barcode.text or ""
                 ).strip()
 
+
+                # Remove spaces and hyphens
                 isbn = (
                     raw
                     .replace("-", "")
                     .replace(" ", "")
                 )
+
+
+                # ------------------------------------------------
+                # ACCEPT VALID ISBN-13
+                # ------------------------------------------------
 
                 if (
                     len(isbn) == 13
@@ -325,13 +380,24 @@ def scan_isbn_from_image(image_file):
                     and isbn.startswith(
                         ("978", "979")
                     )
-                    and is_valid_isbn13(isbn)
+                    and is_valid_isbn13(
+                        isbn
+                    )
                 ):
+
                     return isbn
 
 
+        # ----------------------------------------------------
+        # NOTHING VALID FOUND
+        # ----------------------------------------------------
+
         return None
 
+
+    # --------------------------------------------------------
+    # ERROR HANDLING
+    # --------------------------------------------------------
 
     except Exception as e:
 
@@ -341,22 +407,84 @@ def scan_isbn_from_image(image_file):
 
         return None
 
-
 # ============================================================
-# OCR PLACEHOLDER
+# OCR BOOK TEXT FROM IMAGE
 # ============================================================
 
 def extract_text_from_image(image_file):
     """
-    OCR placeholder.
-
-    PaddleOCR has been removed because it was causing
-    deployment problems on Streamlit Cloud.
-
-    We will add a cloud-compatible OCR solution separately.
+    Extract text from a book cover or inside page using OCR.
     """
 
-    return ""
+    try:
+
+        # ----------------------------------------------------
+        # OPEN IMAGE
+        # ----------------------------------------------------
+
+        image = Image.open(
+            image_file
+        ).convert("RGB")
+
+
+        # ----------------------------------------------------
+        # ENLARGE IMAGE
+        # ----------------------------------------------------
+
+        scale = 2
+
+        image = image.resize(
+            (
+                image.width * scale,
+                image.height * scale,
+            )
+        )
+
+
+        # ----------------------------------------------------
+        # GRAYSCALE
+        # ----------------------------------------------------
+
+        gray = image.convert("L")
+
+
+        # ----------------------------------------------------
+        # IMPROVE CONTRAST
+        # ----------------------------------------------------
+
+        contrast = ImageEnhance.Contrast(
+            gray
+        ).enhance(2.0)
+
+
+        # ----------------------------------------------------
+        # SHARPEN
+        # ----------------------------------------------------
+
+        sharp = ImageEnhance.Sharpness(
+            contrast
+        ).enhance(2.0)
+
+
+        # ----------------------------------------------------
+        # OCR
+        # ----------------------------------------------------
+
+        text = pytesseract.image_to_string(
+            sharp
+        )
+
+
+        return text.strip()
+
+
+    except Exception as e:
+
+        st.error(
+            f"OCR error: {e}"
+        )
+
+        return ""
 
 
 # ============================================================
@@ -381,6 +509,7 @@ def search_books_by_text(text, limit=5):
     query = " ".join(
         words[:40]
     ).strip()
+
 
     if not query:
         return []
@@ -449,9 +578,11 @@ def search_books_by_text(text, limit=5):
                     {}
                 )
 
-                cover_url = image_links.get(
-                    "thumbnail",
-                    ""
+                cover_url = (
+                    image_links.get(
+                        "thumbnail",
+                        ""
+                    )
                 )
 
                 if title:
@@ -465,6 +596,7 @@ def search_books_by_text(text, limit=5):
                             "source": "Google Books",
                         }
                     )
+
 
     except Exception:
         pass
@@ -558,6 +690,7 @@ def search_books_by_text(text, limit=5):
                         }
                     )
 
+
     except Exception:
         pass
 
@@ -585,7 +718,9 @@ def search_books_by_text(text, limit=5):
                 book
             )
 
+
     return unique_results[:limit]
+
 
 
 # ============================================================
@@ -1060,10 +1195,7 @@ if active_session:
 
                     st.session_state.start_time = None
 
-
     elif status == "awaiting_confirmation":
-
-        st.session_state.reading = False
 
         st.session_state.awaiting_confirmation = True
 
@@ -1167,8 +1299,8 @@ Today's progress
 
 <div
 class="progress-fill"
-style="width:{progress_percent}%;"
-></div>
+style="width:{progress_percent}%;">
+</div>
 
 </div>
 
@@ -1282,8 +1414,7 @@ if st.session_state.show_summary:
         )
 
     if st.button(
-        "📚 Start Another Reading Session",
-        use_container_width=True,
+        "📚 Start Another Reading Session"
     ):
 
         st.session_state.show_summary = False
@@ -1314,7 +1445,7 @@ elif st.session_state.awaiting_confirmation:
 
 
     # ========================================================
-    # SCAN ISBN
+    # ISBN SCANNER
     # ========================================================
 
     if st.session_state.scanning_isbn:
@@ -1330,8 +1461,7 @@ elif st.session_state.awaiting_confirmation:
 
         camera_image = st.camera_input(
             "Take a photo of the ISBN barcode",
-            key="isbn_camera",
-            resolution="1080p",
+            key="isbn_camera",resolution="1080p",
         )
 
         if camera_image:
@@ -1360,9 +1490,13 @@ elif st.session_state.awaiting_confirmation:
 
                 if book:
 
-                    st.session_state.scanned_book = book
+                    st.session_state.scanned_book = (
+                        book
+                    )
 
-                    st.session_state.scanning_isbn = False
+                    st.session_state.scanning_isbn = (
+                        False
+                    )
 
                     st.rerun()
 
@@ -1377,6 +1511,17 @@ elif st.session_state.awaiting_confirmation:
                         "You can enter the book title "
                         "manually instead."
                     )
+
+                    if st.button(
+                        "✏️ Enter Title Manually",
+                        use_container_width=True,
+                    ):
+
+                        st.session_state.scanning_isbn = (
+                            False
+                        )
+
+                        st.rerun()
 
             else:
 
@@ -1399,9 +1544,8 @@ elif st.session_state.awaiting_confirmation:
 
             st.rerun()
 
-
-    # ========================================================
-    # SCAN BOOK COVER
+ # ========================================================
+    # COVER SCANNER
     # ========================================================
 
     elif st.session_state.scanning_cover:
@@ -1415,12 +1559,6 @@ elif st.session_state.awaiting_confirmation:
             "so ReadTap can identify the title."
         )
 
-        st.info(
-            "📕 Book-cover text recognition is temporarily "
-            "unavailable while we replace the OCR system. "
-            "ISBN scanning and manual entry are still available."
-        )
-
         cover_image = st.camera_input(
             "Take a photo of the book cover",
             key="cover_camera",
@@ -1429,10 +1567,52 @@ elif st.session_state.awaiting_confirmation:
 
         if cover_image:
 
-            st.warning(
-                "The photo was captured, but cover-text "
-                "recognition is not enabled yet."
-            )
+            with st.spinner(
+                "🔎 Reading the book cover..."
+            ):
+
+                cover_text = extract_text_from_image(
+                    cover_image
+                )
+
+            if cover_text:
+
+                with st.spinner(
+                    "📚 Looking for your book..."
+                ):
+
+                    candidates = search_books_by_text(
+                        cover_text
+                    )
+
+                if candidates:
+
+                    st.session_state.book_candidates = (
+                        candidates
+                    )
+
+                    st.session_state.scanning_cover = False
+
+                    st.rerun()
+
+                else:
+
+                    st.warning(
+                        "I couldn't identify this book "
+                        "from the cover."
+                    )
+
+                    st.caption(
+                        "Try taking a clearer photo with "
+                        "the title visible."
+                    )
+
+            else:
+
+                st.warning(
+                    "I couldn't read any text from "
+                    "the cover."
+                )
 
         if st.button(
             "← Back",
@@ -1442,51 +1622,6 @@ elif st.session_state.awaiting_confirmation:
             st.session_state.scanning_cover = False
 
             st.rerun()
-
-
-    # ========================================================
-    # SCAN INSIDE PAGE
-    # ========================================================
-
-    elif st.session_state.scanning_page:
-
-        st.markdown(
-            "### 📄 Scan Inside Page"
-        )
-
-        st.caption(
-            "Take a clear photo of a page containing "
-            "the book title or other identifying text."
-        )
-
-        st.info(
-            "📄 Inside-page text recognition is temporarily "
-            "unavailable while we replace the OCR system. "
-            "ISBN scanning and manual entry are still available."
-        )
-
-        page_image = st.camera_input(
-            "Take a photo of an inside page",
-            key="page_camera",
-            resolution="1080p",
-        )
-
-        if page_image:
-
-            st.warning(
-                "The photo was captured, but page-text "
-                "recognition is not enabled yet."
-            )
-
-        if st.button(
-            "← Back",
-            use_container_width=True,
-        ):
-
-            st.session_state.scanning_page = False
-
-            st.rerun()
-
 
     # ========================================================
     # BOOK FOUND
@@ -1529,11 +1664,6 @@ elif st.session_state.awaiting_confirmation:
         )
 
         st.write("")
-
-
-        # ----------------------------------------------------
-        # USE BOOK
-        # ----------------------------------------------------
 
         if st.button(
             "✅ Use This Book",
@@ -1580,8 +1710,6 @@ elif st.session_state.awaiting_confirmation:
 
                 st.session_state.scanned_book = None
                 st.session_state.scanning_isbn = False
-                st.session_state.scanning_cover = False
-                st.session_state.scanning_page = False
                 st.session_state.awaiting_confirmation = False
                 st.session_state.stopped_session = None
                 st.session_state.reading = False
@@ -1592,10 +1720,6 @@ elif st.session_state.awaiting_confirmation:
                 st.rerun()
 
 
-        # ----------------------------------------------------
-        # SCAN AGAIN
-        # ----------------------------------------------------
-
         if st.button(
             "🔄 Scan Again",
             use_container_width=True,
@@ -1603,15 +1727,9 @@ elif st.session_state.awaiting_confirmation:
 
             st.session_state.scanned_book = None
             st.session_state.scanning_isbn = True
-            st.session_state.scanning_cover = False
-            st.session_state.scanning_page = False
 
             st.rerun()
 
-
-        # ----------------------------------------------------
-        # MANUAL ENTRY
-        # ----------------------------------------------------
 
         if st.button(
             "✏️ Enter Title Manually",
@@ -1644,10 +1762,6 @@ elif st.session_state.awaiting_confirmation:
 
             suggested_book = ""
 
-
-        # ----------------------------------------------------
-        # EXISTING BOOK
-        # ----------------------------------------------------
 
         if suggested_book:
 
@@ -1682,22 +1796,8 @@ elif st.session_state.awaiting_confirmation:
 
 
         # ====================================================
-        # BOOK SCANNING OPTIONS
-        # ====================================================
-
-        st.markdown(
-            "### 🔎 Identify Your Book"
-        )
-
-        st.caption(
-            "Choose how you'd like ReadTap to identify "
-            "the book you were reading."
-        )
-
-
-        # ----------------------------------------------------
         # SCAN ISBN
-        # ----------------------------------------------------
+        # ====================================================
 
         if st.button(
             "📷 Scan ISBN",
@@ -1705,131 +1805,121 @@ elif st.session_state.awaiting_confirmation:
         ):
 
             st.session_state.scanning_isbn = True
-            st.session_state.scanning_cover = False
-            st.session_state.scanning_page = False
 
-            st.rerun()
+            st.rerun()# ====================================================
+# BOOK SCANNING OPTIONS
+# ====================================================
 
+if st.button(
+    "📷 Scan ISBN",
+    use_container_width=True,
+):
 
-        # ----------------------------------------------------
-        # SCAN COVER
-        # ----------------------------------------------------
+    st.session_state.scanning_isbn = True
+    st.session_state.scanning_cover = False
+    st.session_state.scanning_page = False
 
-        if st.button(
-            "📕 Scan Book Cover",
-            use_container_width=True,
-        ):
-
-            st.session_state.scanning_cover = True
-            st.session_state.scanning_isbn = False
-            st.session_state.scanning_page = False
-
-            st.rerun()
+    st.rerun()
 
 
-        # ----------------------------------------------------
-        # SCAN INSIDE PAGE
-        # ----------------------------------------------------
+if st.button(
+    "📕 Scan Book Cover",
+    use_container_width=True,
+):
 
-        if st.button(
-            "📄 Scan Inside Page",
-            use_container_width=True,
-        ):
+    st.session_state.scanning_cover = True
+    st.session_state.scanning_isbn = False
+    st.session_state.scanning_page = False
 
-            st.session_state.scanning_page = True
-            st.session_state.scanning_isbn = False
-            st.session_state.scanning_cover = False
-
-            st.rerun()
+    st.rerun()
 
 
-        st.write("")
+if st.button(
+    "📄 Scan Inside Page",
+    use_container_width=True,
+):
+
+    st.session_state.scanning_page = True
+    st.session_state.scanning_isbn = False
+    st.session_state.scanning_cover = False
+
+    st.rerun()
 
 
-        # ====================================================
-        # MANUAL ENTRY
-        # ====================================================
+    st.write("")
 
-        st.markdown(
-            "**Or enter the title manually:**"
+
+    # ====================================================
+    # MANUAL ENTRY
+    # ====================================================
+
+    st.markdown(
+        "**Or enter the title manually:**"
+    )
+
+    final_book = st.text_input(
+        "Book title",
+        value=suggested_book,
+        placeholder=(
+            "e.g. Maybe You Should Talk to Someone"
+        ),
+    )
+
+
+    if st.button(
+        "✅ Confirm Reading",
+        use_container_width=True,
+    ):
+
+        result = finish_reading(
+            student_name=nickname,
+            final_book_title=final_book.strip(),
         )
 
-        final_book = st.text_input(
-            "Book title",
-            value=suggested_book,
-            placeholder=(
-                "e.g. Maybe You Should Talk to Someone"
-            ),
-        )
+        if result is None:
 
+            st.error(
+                "Unable to save the reading session. "
+                "Please enter a book title."
+            )
 
-        # ----------------------------------------------------
-        # CONFIRM READING
-        # ----------------------------------------------------
+        else:
 
-        if st.button(
-            "✅ Confirm Reading",
-            use_container_width=True,
-        ):
-
-            if not final_book.strip():
-
-                st.warning(
-                    "Please enter a book title."
+            today_total = (
+                get_today_reading_minutes(
+                    nickname
                 )
+            )
 
-            else:
+            remaining = max(
+                goal - today_total,
+                0
+            )
 
-                result = finish_reading(
-                    student_name=nickname,
-                    final_book_title=final_book.strip(),
-                )
+            st.session_state.summary = {
+                "book": result["book"],
+                "start": result["start"].strftime(
+                    "%I:%M %p"
+                ),
+                "end": result["end"].strftime(
+                    "%I:%M %p"
+                ),
+                "minutes": result["minutes"],
+                "today_total": today_total,
+                "goal": goal,
+                "remaining": remaining,
+            }
 
-                if result is None:
+            st.session_state.scanned_book = None
+            st.session_state.scanning_isbn = False
+            st.session_state.awaiting_confirmation = False
+            st.session_state.stopped_session = None
+            st.session_state.reading = False
+            st.session_state.start_time = None
+            st.session_state.current_book = ""
+            st.session_state.show_summary = True
 
-                    st.error(
-                        "Unable to save the reading session."
-                    )
-
-                else:
-
-                    today_total = (
-                        get_today_reading_minutes(
-                            nickname
-                        )
-                    )
-
-                    remaining = max(
-                        goal - today_total,
-                        0
-                    )
-
-                    st.session_state.summary = {
-                        "book": result["book"],
-                        "start": result["start"].strftime(
-                            "%I:%M %p"
-                        ),
-                        "end": result["end"].strftime(
-                            "%I:%M %p"
-                        ),
-                        "minutes": result["minutes"],
-                        "today_total": today_total,
-                        "goal": goal,
-                        "remaining": remaining,
-                    }
-
-                    st.session_state.scanned_book = None
-                    st.session_state.scanning_isbn = False
-                    st.session_state.scanning_cover = False
-                    st.session_state.scanning_page = False
-                    st.session_state.awaiting_confirmation = False
-                    st.session_state.stopped_session = None
-                    st.session_state.reading = False
-                    st.session_state.start_time = None
-                    st.session_state.current_book = ""
-                    st.session_state.show_summary = True
-
-                    st.rerun()
+            st.rerun()
 
 
 # ============================================================
@@ -1923,7 +2013,9 @@ elif st.session_state.reading:
 
         else:
 
+            # Clear NFC trigger only after processing.
             if tap_from_url:
+
                 st.query_params.clear()
 
             st.session_state.reading = False
@@ -1938,16 +2030,11 @@ elif st.session_state.reading:
                 "minutes": result["minutes"],
             }
 
-            st.session_state.scanned_book = None
-            st.session_state.scanning_isbn = False
-            st.session_state.scanning_cover = False
-            st.session_state.scanning_page = False
-
             st.rerun()
 
 
 # ============================================================
-# TAP TO START
+# TAP TO START / STOP
 # ============================================================
 
 else:
@@ -1983,6 +2070,7 @@ else:
     if tap_triggered:
 
         if tap_from_url:
+
             st.query_params.clear()
 
 
@@ -2028,8 +2116,6 @@ else:
 
                 st.session_state.scanned_book = None
                 st.session_state.scanning_isbn = False
-                st.session_state.scanning_cover = False
-                st.session_state.scanning_page = False
 
                 st.rerun()
 
@@ -2038,7 +2124,7 @@ else:
         # ACTIVE SESSION → STOP
         # ====================================================
 
-        elif active_session.get("status") == "active":
+        elif active_session["status"] == "active":
 
             end_time = datetime.now(
                 SGT
@@ -2069,11 +2155,6 @@ else:
                     "minutes": result["minutes"],
                 }
 
-                st.session_state.scanned_book = None
-                st.session_state.scanning_isbn = False
-                st.session_state.scanning_cover = False
-                st.session_state.scanning_page = False
-
                 st.rerun()
 
 
@@ -2082,7 +2163,7 @@ else:
         # ====================================================
 
         elif (
-            active_session.get("status")
+            active_session["status"]
             == "awaiting_confirmation"
         ):
 
@@ -2091,20 +2172,10 @@ else:
             st.session_state.awaiting_confirmation = True
 
             st.session_state.stopped_session = {
-                "book": active_session.get(
-                    "book",
-                    ""
-                ),
-                "start": active_session.get(
-                    "start"
-                ),
-                "end": active_session.get(
-                    "end"
-                ),
-                "minutes": active_session.get(
-                    "minutes",
-                    0
-                ),
+                "book": active_session["book"],
+                "start": active_session["start"],
+                "end": active_session["end"],
+                "minutes": active_session["minutes"],
             }
 
             st.rerun()
