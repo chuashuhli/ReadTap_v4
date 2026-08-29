@@ -4,6 +4,9 @@ import numpy as np
 import zxingcpp
 import requests
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from PIL import Image
 from PIL import ImageEnhance
 
