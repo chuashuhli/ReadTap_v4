@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import zxingcpp
 import requests
-from paddleocr import PaddleOCR
 
 from PIL import Image
 from PIL import ImageEnhance

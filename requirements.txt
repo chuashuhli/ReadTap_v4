@@ -3,3 +3,6 @@ pandas
 gspread
 google-auth
 zxing-cpp
+requests
+pillow
+numpy
