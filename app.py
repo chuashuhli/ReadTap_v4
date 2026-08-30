@@ -343,20 +343,99 @@ def scan_isbn_from_image(image_file):
 
 
 # ============================================================
-# OCR PLACEHOLDER
+# GOOGLE CLOUD VISION OCR
 # ============================================================
 
 def extract_text_from_image(image_file):
     """
-    OCR placeholder.
+    Extract text from an image using Google Cloud Vision.
 
-    PaddleOCR has been removed because it was causing
-    deployment problems on Streamlit Cloud.
-
-    We will add a cloud-compatible OCR solution separately.
+    Uses the existing Google service account stored
+    in Streamlit Secrets.
     """
 
-    return ""
+    try:
+
+        from google.cloud import vision
+        from google.oauth2 import service_account
+
+        # ----------------------------------------------------
+        # GET GOOGLE SERVICE ACCOUNT FROM STREAMLIT SECRETS
+        # ----------------------------------------------------
+
+        credentials_info = dict(
+            st.secrets["gcp_service_account"]
+        )
+
+        credentials = (
+            service_account.Credentials.from_service_account_info(
+                credentials_info
+            )
+        )
+
+        # ----------------------------------------------------
+        # CREATE VISION CLIENT
+        # ----------------------------------------------------
+
+        client = vision.ImageAnnotatorClient(
+            credentials=credentials
+        )
+
+        # ----------------------------------------------------
+        # READ IMAGE
+        # ----------------------------------------------------
+
+        image_bytes = image_file.getvalue()
+
+        image = vision.Image(
+            content=image_bytes
+        )
+
+        # ----------------------------------------------------
+        # RUN TEXT DETECTION
+        # ----------------------------------------------------
+
+        response = client.text_detection(
+            image=image
+        )
+
+        # ----------------------------------------------------
+        # CHECK FOR VISION API ERROR
+        # ----------------------------------------------------
+
+        if response.error.message:
+
+            st.error(
+                "Google Vision error: "
+                + response.error.message
+            )
+
+            return ""
+
+        # ----------------------------------------------------
+        # GET DETECTED TEXT
+        # ----------------------------------------------------
+
+        texts = response.text_annotations
+
+        if not texts:
+
+            return ""
+
+        # The first annotation contains the
+        # complete detected text.
+        detected_text = texts[0].description
+
+        return detected_text.strip()
+
+
+    except Exception as e:
+
+        st.error(
+            f"OCR error: {e}"
+        )
+
+        return ""
 
 
 # ============================================================
