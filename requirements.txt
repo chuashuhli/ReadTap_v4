@@ -6,3 +6,4 @@ zxing-cpp
 requests
 pillow
 numpy
+google-cloud-vision
