@@ -440,7 +440,6 @@ def extract_text_from_image(image_file):
         return ""
 
 
-```python
 # ============================================================
 # SEARCH BOOKS USING OCR TEXT
 # ============================================================
@@ -448,202 +447,25 @@ def extract_text_from_image(image_file):
 def search_books_by_text(text, limit=5):
     """
     Search Google Books and Open Library using OCR text.
-
-    Uses multiple search strategies because OCR text from
-    book covers may contain extra words or small OCR errors.
-
-    Returns the best matching books ranked by title similarity.
     """
 
     if not text:
         return []
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # CLEAN OCR TEXT
-    # ========================================================
-
-    import re
-
-    cleaned_text = str(text).strip()
-
-    if not cleaned_text:
-        return []
-
-
-    # --------------------------------------------------------
-    # NORMALISE COMMON OCR ERRORS
     # --------------------------------------------------------
 
-    ocr_corrections = {
-        "whimpy": "wimpy",
-        "wimpyy": "wimpy",
-        "kidss": "kids",
-    }
+    words = text.split()
 
-    words = cleaned_text.split()
-
-    corrected_words = []
-
-    for word in words:
-
-        punctuation = ""
-
-        while word and not word[0].isalnum():
-            punctuation += word[0]
-            word = word[1:]
-
-        trailing = ""
-
-        while word and not word[-1].isalnum():
-            trailing = word[-1] + trailing
-            word = word[:-1]
-
-        lower_word = word.lower()
-
-        if lower_word in ocr_corrections:
-
-            word = ocr_corrections[lower_word]
-
-        corrected_words.append(
-            word
-        )
-
-
-    cleaned_text = " ".join(
-        corrected_words
+    query = " ".join(
+        words[:40]
     ).strip()
 
+    if not query:
+        return []
 
-    # ========================================================
-    # REMOVE OBVIOUS COVER NOISE
-    # ========================================================
-
-    noise_words = {
-        "a",
-        "an",
-        "the",
-        "by",
-        "new",
-        "from",
-        "illustrated",
-        "edition",
-        "book",
-        "novel",
-        "number",
-        "no",
-        "series",
-        "best",
-        "selling",
-        "bestseller",
-    }
-
-    meaningful_words = []
-
-    for word in corrected_words:
-
-        clean_word = re.sub(
-            r"[^A-Za-z0-9]",
-            "",
-            word
-        ).lower()
-
-        if (
-            clean_word
-            and clean_word not in noise_words
-        ):
-
-            meaningful_words.append(
-                clean_word
-            )
-
-
-    # ========================================================
-    # BUILD MULTIPLE SEARCH QUERIES
-    # ========================================================
-
-    queries = []
-
-    # 1. Full corrected OCR text
-    if cleaned_text:
-
-        queries.append(
-            cleaned_text
-        )
-
-
-    # 2. First several meaningful words
-    if meaningful_words:
-
-        short_query = " ".join(
-            meaningful_words[:8]
-        )
-
-        if short_query:
-
-            queries.append(
-                short_query
-            )
-
-
-    # 3. First 5 meaningful words
-    if len(meaningful_words) >= 5:
-
-        queries.append(
-            " ".join(
-                meaningful_words[:5]
-            )
-        )
-
-
-    # 4. First 3 meaningful words
-    if len(meaningful_words) >= 3:
-
-        queries.append(
-            " ".join(
-                meaningful_words[:3]
-            )
-        )
-
-
-    # 5. Specific title-style search
-    if len(meaningful_words) >= 2:
-
-        queries.append(
-            "intitle:"
-            + " ".join(
-                meaningful_words[:6]
-            )
-        )
-
-
-    # --------------------------------------------------------
-    # REMOVE DUPLICATE QUERIES
-    # --------------------------------------------------------
-
-    unique_queries = []
-
-    seen_queries = set()
-
-    for query in queries:
-
-        key = query.lower().strip()
-
-        if (
-            key
-            and key not in seen_queries
-        ):
-
-            seen_queries.add(key)
-
-            unique_queries.append(
-                query
-            )
-
-
-    # ========================================================
-    # STORE ALL RESULTS
-    # ========================================================
 
     results = []
 
@@ -652,29 +474,24 @@ def search_books_by_text(text, limit=5):
     # GOOGLE BOOKS
     # ========================================================
 
-    for query in unique_queries:
+    try:
 
-        try:
+        url = (
+            "https://www.googleapis.com/books/v1/volumes"
+        )
 
-            url = (
-                "https://www.googleapis.com/books/v1/volumes"
-            )
+        params = {
+            "q": query,
+            "maxResults": limit,
+        }
 
-            params = {
-                "q": query,
-                "maxResults": 10,
-                "orderBy": "relevance",
-                "printType": "books",
-            }
+        response = requests.get(
+            url,
+            params=params,
+            timeout=10,
+        )
 
-            response = requests.get(
-                url,
-                params=params,
-                timeout=10,
-            )
-
-            if response.status_code != 200:
-                continue
+        if response.status_code == 200:
 
             data = response.json()
 
@@ -697,14 +514,6 @@ def search_books_by_text(text, limit=5):
                     )
                 ).strip()
 
-                if not title:
-                    continue
-
-
-                # ------------------------------------------------
-                # AUTHOR
-                # ------------------------------------------------
-
                 authors = volume_info.get(
                     "authors",
                     []
@@ -716,11 +525,6 @@ def search_books_by_text(text, limit=5):
                     else ""
                 )
 
-
-                # ------------------------------------------------
-                # COVER
-                # ------------------------------------------------
-
                 image_links = volume_info.get(
                     "imageLinks",
                     {}
@@ -731,127 +535,44 @@ def search_books_by_text(text, limit=5):
                     ""
                 )
 
+                if title:
 
-                # ------------------------------------------------
-                # ISBN
-                # ------------------------------------------------
-
-                isbn = ""
-
-                identifiers = volume_info.get(
-                    "industryIdentifiers",
-                    []
-                )
-
-                for identifier in identifiers:
-
-                    identifier_type = identifier.get(
-                        "type",
-                        ""
+                    results.append(
+                        {
+                            "title": title,
+                            "author": author,
+                            "isbn": "",
+                            "cover_url": cover_url,
+                            "source": "Google Books",
+                        }
                     )
 
-                    identifier_value = str(
-                        identifier.get(
-                            "identifier",
-                            ""
-                        )
-                    )
-
-                    if (
-                        identifier_type
-                        == "ISBN_13"
-                    ):
-
-                        isbn = identifier_value
-
-                        break
-
-
-                # If ISBN-13 wasn't available,
-                # try ISBN-10.
-                if not isbn:
-
-                    for identifier in identifiers:
-
-                        identifier_type = identifier.get(
-                            "type",
-                            ""
-                        )
-
-                        identifier_value = str(
-                            identifier.get(
-                                "identifier",
-                                ""
-                            )
-                        )
-
-                        if (
-                            identifier_type
-                            == "ISBN_10"
-                        ):
-
-                            isbn = identifier_value
-
-                            break
-
-
-                results.append(
-                    {
-                        "title": title,
-                        "author": author,
-                        "isbn": isbn,
-                        "cover_url": cover_url,
-                        "source": "Google Books",
-                        "query": query,
-                    }
-                )
-
-
-        except Exception:
-
-            continue
+    except Exception:
+        pass
 
 
     # ========================================================
     # OPEN LIBRARY
     # ========================================================
 
-    for query in unique_queries:
+    try:
 
-        # Open Library does not need the Google-specific
-        # intitle: syntax for our fallback searches.
-
-        open_library_query = (
-            query
-            .replace(
-                "intitle:",
-                ""
-            )
-            .strip()
+        url = (
+            "https://openlibrary.org/search.json"
         )
 
-        if not open_library_query:
-            continue
+        params = {
+            "q": query,
+            "limit": limit,
+        }
 
-        try:
+        response = requests.get(
+            url,
+            params=params,
+            timeout=10,
+        )
 
-            url = (
-                "https://openlibrary.org/search.json"
-            )
-
-            params = {
-                "q": open_library_query,
-                "limit": 10,
-            }
-
-            response = requests.get(
-                url,
-                params=params,
-                timeout=10,
-            )
-
-            if response.status_code != 200:
-                continue
+        if response.status_code == 200:
 
             data = response.json()
 
@@ -869,14 +590,6 @@ def search_books_by_text(text, limit=5):
                     )
                 ).strip()
 
-                if not title:
-                    continue
-
-
-                # ------------------------------------------------
-                # AUTHOR
-                # ------------------------------------------------
-
                 authors = doc.get(
                     "author_name",
                     []
@@ -889,11 +602,6 @@ def search_books_by_text(text, limit=5):
                     if authors
                     else ""
                 )
-
-
-                # ------------------------------------------------
-                # COVER
-                # ------------------------------------------------
 
                 cover_id = doc.get(
                     "cover_i"
@@ -908,159 +616,31 @@ def search_books_by_text(text, limit=5):
                         f"b/id/{cover_id}-M.jpg"
                     )
 
-
-                # ------------------------------------------------
-                # ISBN
-                # ------------------------------------------------
-
-                isbn = ""
-
                 isbn_list = doc.get(
                     "isbn",
                     []
                 )
 
-                if isbn_list:
-
-                    isbn = str(
-                        isbn_list[0]
-                    )
-
-
-                results.append(
-                    {
-                        "title": title,
-                        "author": author,
-                        "isbn": isbn,
-                        "cover_url": cover_url,
-                        "source": "Open Library",
-                        "query": query,
-                    }
+                isbn = (
+                    str(isbn_list[0])
+                    if isbn_list
+                    else ""
                 )
 
+                if title:
 
-        except Exception:
+                    results.append(
+                        {
+                            "title": title,
+                            "author": author,
+                            "isbn": isbn,
+                            "cover_url": cover_url,
+                            "source": "Open Library",
+                        }
+                    )
 
-            continue
-
-
-    # ========================================================
-    # NO RESULTS
-    # ========================================================
-
-    if not results:
-        return []
-
-
-    # ========================================================
-    # CALCULATE MATCH SCORE
-    # ========================================================
-
-    search_words = set(
-        meaningful_words
-    )
-
-
-    def calculate_score(book):
-
-        title = str(
-            book.get(
-                "title",
-                ""
-            )
-        ).lower()
-
-        author = str(
-            book.get(
-                "author",
-                ""
-            )
-        ).lower()
-
-        title_clean = re.sub(
-            r"[^a-z0-9\s]",
-            " ",
-            title
-        )
-
-        title_words = set(
-            title_clean.split()
-        )
-
-        score = 0
-
-
-        # ----------------------------------------------------
-        # WORD MATCHES
-        # ----------------------------------------------------
-
-        for word in search_words:
-
-            if word in title_words:
-
-                score += 10
-
-            elif word in title:
-
-                score += 5
-
-            elif word in author:
-
-                score += 2
-
-
-        # ----------------------------------------------------
-        # PHRASE MATCH
-        # ----------------------------------------------------
-
-        full_cleaned = re.sub(
-            r"[^a-z0-9\s]",
-            " ",
-            cleaned_text.lower()
-        )
-
-        full_cleaned = " ".join(
-            full_cleaned.split()
-        )
-
-        if (
-            full_cleaned
-            and full_cleaned in title
-        ):
-
-            score += 30
-
-
-        # ----------------------------------------------------
-        # IMPORTANT TITLE WORDS
-        # ----------------------------------------------------
-
-        if "wimpy" in search_words:
-
-            if "wimpy" in title:
-
-                score += 25
-
-
-        if "meltdown" in search_words:
-
-            if "meltdown" in title:
-
-                score += 25
-
-
-        return score
-
-
-    # ========================================================
-    # SCORE RESULTS
-    # ========================================================
-
-    for book in results:
-
-        book["score"] = calculate_score(
-            book
-        )
+    except Exception:
+        pass
 
 
     # ========================================================
@@ -1071,14 +651,7 @@ def search_books_by_text(text, limit=5):
 
     seen = set()
 
-    for book in sorted(
-        results,
-        key=lambda x: x.get(
-            "score",
-            0
-        ),
-        reverse=True,
-    ):
+    for book in results:
 
         key = (
             book["title"].lower().strip(),
@@ -1093,30 +666,7 @@ def search_books_by_text(text, limit=5):
                 book
             )
 
-
-    # ========================================================
-    # REMOVE INTERNAL SEARCH METADATA
-    # ========================================================
-
-    for book in unique_results:
-
-        book.pop(
-            "query",
-            None
-        )
-
-        book.pop(
-            "score",
-            None
-        )
-
-
-    # ========================================================
-    # RETURN BEST MATCHES
-    # ========================================================
-
     return unique_results[:limit]
-```
 
 
 # ============================================================
