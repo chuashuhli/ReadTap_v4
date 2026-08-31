@@ -350,10 +350,8 @@ def extract_text_from_image(image_file):
     """
     Extract text from an image using Google Cloud Vision.
 
-    Uses the Google Vision service account stored
-    in Streamlit Secrets under:
-
-        gcp_vision_service_account
+    Uses the existing Google service account stored
+    in Streamlit Secrets.
     """
 
     try:
@@ -362,7 +360,7 @@ def extract_text_from_image(image_file):
         from google.oauth2 import service_account
 
         # ----------------------------------------------------
-        # GET GOOGLE VISION SERVICE ACCOUNT
+        # GET GOOGLE SERVICE ACCOUNT FROM STREAMLIT SECRETS
         # ----------------------------------------------------
 
         credentials_info = dict(
@@ -402,7 +400,7 @@ def extract_text_from_image(image_file):
         )
 
         # ----------------------------------------------------
-        # CHECK VISION API ERROR
+        # CHECK FOR VISION API ERROR
         # ----------------------------------------------------
 
         if response.error.message:
@@ -964,7 +962,6 @@ defaults = {
     "scanning_cover": False,
     "scanning_page": False,
     "book_candidates": [],
-    "ocr_text": "",
 }
 
 for key, value in defaults.items():
@@ -1443,7 +1440,7 @@ elif st.session_state.awaiting_confirmation:
                 if book:
 
                     st.session_state.scanned_book = book
-                    st.session_state.book_candidates = []
+
                     st.session_state.scanning_isbn = False
 
                     st.rerun()
@@ -1498,8 +1495,9 @@ elif st.session_state.awaiting_confirmation:
         )
 
         st.info(
-            "📕 ReadTap will use Google Cloud Vision "
-            "to read the text on the cover."
+            "📕 Book-cover text recognition is temporarily "
+            "unavailable while we replace the OCR system. "
+            "ISBN scanning and manual entry are still available."
         )
 
         cover_image = st.camera_input(
@@ -1508,7 +1506,7 @@ elif st.session_state.awaiting_confirmation:
             resolution="1080p",
         )
 
-        if cover_image:
+                if cover_image:
 
             with st.spinner(
                 "🔎 Reading the book cover..."
@@ -1520,14 +1518,12 @@ elif st.session_state.awaiting_confirmation:
 
             if detected_text:
 
-                st.session_state.ocr_text = detected_text
-
                 st.success(
                     "✅ Text detected on the book cover!"
                 )
 
                 with st.spinner(
-                    "📚 Searching for your book..."
+                    "📚 Finding your book..."
                 ):
 
                     candidates = search_books_by_text(
@@ -1538,8 +1534,6 @@ elif st.session_state.awaiting_confirmation:
 
                     st.session_state.book_candidates = candidates
                     st.session_state.scanning_cover = False
-                    st.session_state.scanning_page = False
-
                     st.rerun()
 
                 else:
@@ -1550,7 +1544,7 @@ elif st.session_state.awaiting_confirmation:
                     )
 
                     st.text_area(
-                        "Text detected by ReadTap",
+                        "Detected text",
                         detected_text,
                         height=150,
                     )
@@ -1577,7 +1571,6 @@ elif st.session_state.awaiting_confirmation:
         ):
 
             st.session_state.scanning_cover = False
-            st.session_state.ocr_text = ""
 
             st.rerun()
 
@@ -1598,8 +1591,9 @@ elif st.session_state.awaiting_confirmation:
         )
 
         st.info(
-            "📄 ReadTap will use Google Cloud Vision "
-            "to read the text on the page."
+            "📄 Inside-page text recognition is temporarily "
+            "unavailable while we replace the OCR system. "
+            "ISBN scanning and manual entry are still available."
         )
 
         page_image = st.camera_input(
@@ -1608,7 +1602,7 @@ elif st.session_state.awaiting_confirmation:
             resolution="1080p",
         )
 
-        if page_image:
+                if page_image:
 
             with st.spinner(
                 "🔎 Reading the page..."
@@ -1620,14 +1614,12 @@ elif st.session_state.awaiting_confirmation:
 
             if detected_text:
 
-                st.session_state.ocr_text = detected_text
-
                 st.success(
                     "✅ Text detected on the page!"
                 )
 
                 with st.spinner(
-                    "📚 Searching for your book..."
+                    "📚 Finding your book..."
                 ):
 
                     candidates = search_books_by_text(
@@ -1638,8 +1630,6 @@ elif st.session_state.awaiting_confirmation:
 
                     st.session_state.book_candidates = candidates
                     st.session_state.scanning_page = False
-                    st.session_state.scanning_cover = False
-
                     st.rerun()
 
                 else:
@@ -1650,15 +1640,9 @@ elif st.session_state.awaiting_confirmation:
                     )
 
                     st.text_area(
-                        "Text detected by ReadTap",
+                        "Detected text",
                         detected_text,
                         height=150,
-                    )
-
-                    st.info(
-                        "Try another page containing "
-                        "the book title, author, or other "
-                        "identifying information."
                     )
 
             else:
@@ -1678,10 +1662,8 @@ elif st.session_state.awaiting_confirmation:
         ):
 
             st.session_state.scanning_page = False
-            st.session_state.ocr_text = ""
 
             st.rerun()
-
 
     # ========================================================
     # BOOK CANDIDATES FROM OCR
@@ -1697,21 +1679,6 @@ elif st.session_state.awaiting_confirmation:
             "ReadTap found these possible matches. "
             "Choose the book you were reading."
         )
-
-        if st.session_state.ocr_text:
-
-            with st.expander(
-                "🔎 See text ReadTap detected"
-            ):
-
-                st.text(
-                    st.session_state.ocr_text
-                )
-
-
-        # ----------------------------------------------------
-        # DISPLAY CANDIDATES
-        # ----------------------------------------------------
 
         for i, candidate in enumerate(
             st.session_state.book_candidates
@@ -1745,25 +1712,10 @@ elif st.session_state.awaiting_confirmation:
 
                 if cover_url:
 
-                    try:
-
-                        st.image(
-                            cover_url,
-                            width=90,
-                        )
-
-                    except Exception:
-
-                        st.write(
-                            "📚"
-                        )
-
-                else:
-
-                    st.markdown(
-                        "### 📚"
+                    st.image(
+                        cover_url,
+                        width=90,
                     )
-
 
             with col2:
 
@@ -1791,45 +1743,20 @@ elif st.session_state.awaiting_confirmation:
 
                     st.session_state.scanned_book = candidate
                     st.session_state.book_candidates = []
-                    st.session_state.ocr_text = ""
                     st.session_state.scanning_cover = False
                     st.session_state.scanning_page = False
 
                     st.rerun()
 
 
-            st.write("")
-
-
-        # ----------------------------------------------------
-        # TRY AGAIN
-        # ----------------------------------------------------
-
         if st.button(
-            "🔄 Scan Again",
+            "← Scan Again",
             use_container_width=True,
         ):
 
             st.session_state.book_candidates = []
-            st.session_state.ocr_text = ""
 
             st.rerun()
-
-
-        # ----------------------------------------------------
-        # MANUAL ENTRY
-        # ----------------------------------------------------
-
-        if st.button(
-            "✏️ Enter Title Manually",
-            use_container_width=True,
-        ):
-
-            st.session_state.book_candidates = []
-            st.session_state.ocr_text = ""
-
-            st.rerun()
-
 
     # ========================================================
     # BOOK FOUND
@@ -1860,7 +1787,7 @@ elif st.session_state.awaiting_confirmation:
 </div>
 
 <div class="reading-start">
-🔢 ISBN: {book["isbn"] or "Not available"}
+🔢 ISBN: {book["isbn"]}
 </div>
 
 </div>
@@ -1925,8 +1852,6 @@ elif st.session_state.awaiting_confirmation:
                 st.session_state.scanning_isbn = False
                 st.session_state.scanning_cover = False
                 st.session_state.scanning_page = False
-                st.session_state.book_candidates = []
-                st.session_state.ocr_text = ""
                 st.session_state.awaiting_confirmation = False
                 st.session_state.stopped_session = None
                 st.session_state.reading = False
@@ -1947,8 +1872,6 @@ elif st.session_state.awaiting_confirmation:
         ):
 
             st.session_state.scanned_book = None
-            st.session_state.book_candidates = []
-            st.session_state.ocr_text = ""
             st.session_state.scanning_isbn = True
             st.session_state.scanning_cover = False
             st.session_state.scanning_page = False
@@ -1966,11 +1889,7 @@ elif st.session_state.awaiting_confirmation:
         ):
 
             st.session_state.scanned_book = None
-            st.session_state.book_candidates = []
-            st.session_state.ocr_text = ""
             st.session_state.scanning_isbn = False
-            st.session_state.scanning_cover = False
-            st.session_state.scanning_page = False
 
             st.rerun()
 
@@ -2058,8 +1977,6 @@ elif st.session_state.awaiting_confirmation:
             st.session_state.scanning_isbn = True
             st.session_state.scanning_cover = False
             st.session_state.scanning_page = False
-            st.session_state.book_candidates = []
-            st.session_state.ocr_text = ""
 
             st.rerun()
 
@@ -2076,8 +1993,6 @@ elif st.session_state.awaiting_confirmation:
             st.session_state.scanning_cover = True
             st.session_state.scanning_isbn = False
             st.session_state.scanning_page = False
-            st.session_state.book_candidates = []
-            st.session_state.ocr_text = ""
 
             st.rerun()
 
@@ -2094,8 +2009,6 @@ elif st.session_state.awaiting_confirmation:
             st.session_state.scanning_page = True
             st.session_state.scanning_isbn = False
             st.session_state.scanning_cover = False
-            st.session_state.book_candidates = []
-            st.session_state.ocr_text = ""
 
             st.rerun()
 
@@ -2179,8 +2092,6 @@ elif st.session_state.awaiting_confirmation:
                     st.session_state.scanning_isbn = False
                     st.session_state.scanning_cover = False
                     st.session_state.scanning_page = False
-                    st.session_state.book_candidates = []
-                    st.session_state.ocr_text = ""
                     st.session_state.awaiting_confirmation = False
                     st.session_state.stopped_session = None
                     st.session_state.reading = False
@@ -2301,8 +2212,6 @@ elif st.session_state.reading:
             st.session_state.scanning_isbn = False
             st.session_state.scanning_cover = False
             st.session_state.scanning_page = False
-            st.session_state.book_candidates = []
-            st.session_state.ocr_text = ""
 
             st.rerun()
 
@@ -2391,8 +2300,6 @@ else:
                 st.session_state.scanning_isbn = False
                 st.session_state.scanning_cover = False
                 st.session_state.scanning_page = False
-                st.session_state.book_candidates = []
-                st.session_state.ocr_text = ""
 
                 st.rerun()
 
@@ -2436,8 +2343,6 @@ else:
                 st.session_state.scanning_isbn = False
                 st.session_state.scanning_cover = False
                 st.session_state.scanning_page = False
-                st.session_state.book_candidates = []
-                st.session_state.ocr_text = ""
 
                 st.rerun()
 
