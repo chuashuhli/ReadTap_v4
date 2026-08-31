@@ -364,7 +364,7 @@ def extract_text_from_image(image_file):
         # ----------------------------------------------------
 
         credentials_info = dict(
-            st.secrets["gcp_service_account"]
+            st.secrets["gcp_vision_service_account"]
         )
 
         credentials = (
