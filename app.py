@@ -440,7 +440,6 @@ def extract_text_from_image(image_file):
         return ""
 
 
-```python
 # ============================================================
 # SEARCH BOOKS USING OCR TEXT
 # ============================================================
