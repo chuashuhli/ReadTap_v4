@@ -2074,63 +2074,6 @@ elif st.session_state.awaiting_confirmation:
                     "✅ Text detected on the page!"
                 )
 
-                # =================================================
-                # TEMPORARY PAGE SEARCH TEST
-                # =================================================
-
-                if st.button(
-                    "🧪 Test Page Search",
-                    use_container_width=True,
-                ):
-
-                    with st.spinner(
-                        "🔎 Testing page text search..."
-                    ):
-
-                        test_results = (
-                            test_page_text_search(
-                                detected_text
-                            )
-                        )
-
-                    st.markdown(
-                        "### 🧪 Google Books Test Results"
-                    )
-
-                    if test_results:
-
-                        for result in test_results:
-
-                            st.markdown(
-                                f"**{result['title']}**"
-                            )
-
-                            if result["author"]:
-
-                                st.caption(
-                                    f"✍️ {result['author']}"
-                                )
-
-                            st.caption(
-                                f"Search phrase: "
-                                f"{result['phrase']}"
-                            )
-
-                            if result["snippet"]:
-
-                                st.info(
-                                    result["snippet"]
-                                )
-
-                            st.write("")
-
-                    else:
-
-                        st.warning(
-                            "Google Books did not return "
-                            "any matches for the page text."
-                        )
-                        
                 with st.spinner(
                     "📚 Searching for your book..."
                 ):
