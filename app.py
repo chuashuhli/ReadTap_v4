@@ -2223,19 +2223,19 @@ elif st.session_state.awaiting_confirmation:
                     "✅ Text detected on the book cover!"
                 )
 
-                    # ------------------------------------------------
-                    # SHOW PHRASES BEING SEARCHED
-                    # ------------------------------------------------
+                # ------------------------------------------------
+                # SHOW PHRASES BEING SEARCHED
+                # ------------------------------------------------
 
-                    st.markdown(
-                        "### 🔎 Search phrases ReadTap generated"
+                st.markdown(
+                    "### 🔎 Search phrases ReadTap generated"
+                )
+
+                for phrase in page_test["phrases"]:
+
+                    st.write(
+                        f'• "{phrase}"'
                     )
-
-                    for phrase in page_test["phrases"]:
-
-                        st.write(
-                            f'• "{phrase}"'
-                        )
 
 
                     # ------------------------------------------------
