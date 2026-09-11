@@ -1116,6 +1116,255 @@ def search_books_by_text(text, limit=5):
 
     return unique_results[:limit]
 
+# ============================================================
+# TEST PAGE TEXT SEARCH
+# ============================================================
+
+def test_page_text_search(text):
+    """
+    Test Google Books using distinctive phrases
+    extracted from an inside-page OCR result.
+
+    This is a temporary test for page identification.
+    It does NOT replace the existing cover search.
+    """
+
+    import re
+
+    if not text:
+        return {
+            "phrases": [],
+            "results": [],
+        }
+
+
+    # --------------------------------------------------------
+    # CLEAN OCR
+    # --------------------------------------------------------
+
+    cleaned = str(text).replace(
+        "\r",
+        "\n"
+    )
+
+    lines = cleaned.split("\n")
+
+    useful_lines = []
+
+
+    # --------------------------------------------------------
+    # REMOVE OBVIOUS UI / OCR NOISE
+    # --------------------------------------------------------
+
+    noise_phrases = [
+        "Does this paragraph resemble a book title?",
+        "S, we can search",
+        "into the book-title",
+        "range to extract the",
+        "ReadTap found",
+        "Possible Books",
+        "See text ReadTap detected",
+    ]
+
+
+    for line in lines:
+
+        line = line.strip()
+
+        if not line:
+            continue
+
+        lower_line = line.lower()
+
+        skip = False
+
+        for noise in noise_phrases:
+
+            if noise.lower() in lower_line:
+
+                skip = True
+
+                break
+
+        if skip:
+            continue
+
+        useful_lines.append(line)
+
+
+    # --------------------------------------------------------
+    # CREATE SEARCH PHRASES
+    # --------------------------------------------------------
+
+    phrases = []
+
+    for line in useful_lines:
+
+        words = line.split()
+
+        # We want reasonably long pieces of prose.
+        if len(words) < 8:
+            continue
+
+
+        # Take chunks of 10 words.
+        for i in range(
+            0,
+            len(words),
+            5
+        ):
+
+            chunk = words[
+                i:i + 10
+            ]
+
+            if len(chunk) < 8:
+                continue
+
+            phrase = " ".join(chunk)
+
+            phrases.append(
+                phrase
+            )
+
+
+    # --------------------------------------------------------
+    # REMOVE DUPLICATE PHRASES
+    # --------------------------------------------------------
+
+    unique_phrases = []
+
+    seen = set()
+
+    for phrase in phrases:
+
+        key = phrase.lower().strip()
+
+        if key not in seen:
+
+            seen.add(key)
+
+            unique_phrases.append(
+                phrase
+            )
+
+
+    # Test only the first 6 phrases.
+    unique_phrases = unique_phrases[:6]
+
+
+    # --------------------------------------------------------
+    # SEARCH GOOGLE BOOKS
+    # --------------------------------------------------------
+
+    results = []
+
+
+    for phrase in unique_phrases:
+
+        try:
+
+            url = (
+                "https://www.googleapis.com/books/v1/volumes"
+            )
+
+            params = {
+                "q": f'"{phrase}"',
+                "maxResults": 10,
+                "printType": "books",
+            }
+
+            response = requests.get(
+                url,
+                params=params,
+                timeout=10,
+            )
+
+            if response.status_code != 200:
+                continue
+
+            data = response.json()
+
+            items = data.get(
+                "items",
+                []
+            )
+
+
+            for item in items:
+
+                volume_info = item.get(
+                    "volumeInfo",
+                    {}
+                )
+
+                title = str(
+                    volume_info.get(
+                        "title",
+                        ""
+                    )
+                ).strip()
+
+                if not title:
+                    continue
+
+
+                authors = volume_info.get(
+                    "authors",
+                    []
+                )
+
+                author = (
+                    ", ".join(authors)
+                    if authors
+                    else ""
+                )
+
+
+                search_info = item.get(
+                    "searchInfo",
+                    {}
+                )
+
+                snippet = str(
+                    search_info.get(
+                        "textSnippet",
+                        ""
+                    )
+                ).strip()
+
+
+                image_links = volume_info.get(
+                    "imageLinks",
+                    {}
+                )
+
+                cover_url = image_links.get(
+                    "thumbnail",
+                    ""
+                )
+
+
+                results.append(
+                    {
+                        "title": title,
+                        "author": author,
+                        "cover_url": cover_url,
+                        "snippet": snippet,
+                        "phrase": phrase,
+                    }
+                )
+
+
+        except Exception:
+
+            continue
+
+
+    return {
+        "phrases": unique_phrases,
+        "results": results,
+    }
 
 # ============================================================
 # CUSTOM CSS
@@ -1974,13 +2223,82 @@ elif st.session_state.awaiting_confirmation:
                     "✅ Text detected on the book cover!"
                 )
 
-                with st.spinner(
-                    "📚 Searching for your book..."
+                                # =================================================
+                # TEMPORARY PAGE SEARCH TEST
+                # =================================================
+
+                if st.button(
+                    "🧪 Test Page Search",
+                    use_container_width=True,
                 ):
 
-                    candidates = search_books_by_text(
-                        detected_text
+                    with st.spinner(
+                        "🔎 Testing page text search..."
+                    ):
+
+                        page_test = (
+                            test_page_text_search(
+                                detected_text
+                            )
+                        )
+
+
+                    # ------------------------------------------------
+                    # SHOW PHRASES BEING SEARCHED
+                    # ------------------------------------------------
+
+                    st.markdown(
+                        "### 🔎 Search phrases ReadTap generated"
                     )
+
+                    for phrase in page_test["phrases"]:
+
+                        st.write(
+                            f'• "{phrase}"'
+                        )
+
+
+                    # ------------------------------------------------
+                    # SHOW GOOGLE BOOKS RESULTS
+                    # ------------------------------------------------
+
+                    st.markdown(
+                        "### 📚 Google Books results"
+                    )
+
+                    if page_test["results"]:
+
+                        for result in page_test["results"]:
+
+                            st.markdown(
+                                f"**{result['title']}**"
+                            )
+
+                            if result["author"]:
+
+                                st.caption(
+                                    f"✍️ {result['author']}"
+                                )
+
+                            if result["snippet"]:
+
+                                st.info(
+                                    result["snippet"]
+                                )
+
+                            st.caption(
+                                f"Matched phrase: "
+                                f"{result['phrase']}"
+                            )
+
+                            st.write("")
+
+                    else:
+
+                        st.warning(
+                            "Google Books returned "
+                            "no matches."
+                        )
 
                 if candidates:
 
@@ -2130,7 +2448,7 @@ elif st.session_state.awaiting_confirmation:
                             "Google Books did not return "
                             "any matches for the page text."
                         )
-                        
+
                 with st.spinner(
                     "📚 Searching for your book..."
                 ):
