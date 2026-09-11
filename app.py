@@ -2507,28 +2507,118 @@ elif st.session_state.awaiting_confirmation:
                             "no usable results."
                         )
                         
-                with st.spinner(
-                    "📚 Searching for your book..."
+                                # =================================================
+                # TEMPORARY PAGE SEARCH TEST
+                # =================================================
+
+                if st.button(
+                    "🧪 Test Page Search",
+                    use_container_width=True,
                 ):
 
-                    candidates = search_books_by_text(
-                        detected_text
+                    with st.spinner(
+                        "🔎 Testing page text search..."
+                    ):
+
+                        page_test = (
+                            test_page_text_search(
+                                detected_text
+                            )
+                        )
+
+                    # ------------------------------------------------
+                    # SHOW SEARCH PHRASES
+                    # ------------------------------------------------
+
+                    st.markdown(
+                        "### 🔎 Search phrases"
                     )
 
-                if candidates:
-
-                    st.session_state.book_candidates = candidates
-                    st.session_state.scanning_page = False
-                    st.session_state.scanning_cover = False
-
-                    st.rerun()
-
-                else:
-
-                    st.warning(
-                        "I found text on the page, "
-                        "but couldn't match it to a book."
+                    phrases = page_test.get(
+                        "phrases",
+                        []
                     )
+
+                    for phrase in phrases:
+
+                        st.write(
+                            f'• "{phrase}"'
+                        )
+
+
+                    # ------------------------------------------------
+                    # SHOW GOOGLE BOOKS RESULTS
+                    # ------------------------------------------------
+
+                    st.markdown(
+                        "### 📚 Google Books results"
+                    )
+
+                    results = page_test.get(
+                        "results",
+                        []
+                    )
+
+                    if results:
+
+                        for result in results:
+
+                            if not isinstance(
+                                result,
+                                dict
+                            ):
+
+                                continue
+
+                            title = result.get(
+                                "title",
+                                "Unknown title"
+                            )
+
+                            author = result.get(
+                                "author",
+                                ""
+                            )
+
+                            snippet = result.get(
+                                "snippet",
+                                ""
+                            )
+
+                            matched_phrase = result.get(
+                                "phrase",
+                                ""
+                            )
+
+                            st.markdown(
+                                f"**{title}**"
+                            )
+
+                            if author:
+
+                                st.caption(
+                                    f"✍️ {author}"
+                                )
+
+                            if snippet:
+
+                                st.info(
+                                    snippet
+                                )
+
+                            st.caption(
+                                "Matched phrase: "
+                                + matched_phrase
+                            )
+
+                            st.write("")
+
+                    else:
+
+                        st.warning(
+                            "Google Books returned "
+                            "no usable results."
+                        )
 
                     st.text_area(
                         "Text detected by ReadTap",
