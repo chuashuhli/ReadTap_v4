@@ -2392,7 +2392,7 @@ elif st.session_state.awaiting_confirmation:
                     "✅ Text detected on the page!"
                 )
 
-                # =================================================
+                                # =================================================
                 # TEMPORARY PAGE SEARCH TEST
                 # =================================================
 
@@ -2405,39 +2405,97 @@ elif st.session_state.awaiting_confirmation:
                         "🔎 Testing page text search..."
                     ):
 
-                        test_results = (
+                        page_test = (
                             test_page_text_search(
                                 detected_text
                             )
                         )
 
                     st.markdown(
-                        "### 🧪 Google Books Test Results"
+                        "### 🔎 Search phrases"
                     )
 
-                    if test_results:
+                    if isinstance(page_test, dict):
 
-                        for result in test_results:
+                        phrases = page_test.get(
+                            "phrases",
+                            []
+                        )
+
+                        results = page_test.get(
+                            "results",
+                            []
+                        )
+
+                    else:
+
+                        phrases = []
+                        results = page_test
+
+
+                    for phrase in phrases:
+
+                        st.write(
+                            f'• "{phrase}"'
+                        )
+
+
+                    st.markdown(
+                        "### 📚 Google Books results"
+                    )
+
+                    if results:
+
+                        for result in results:
+
+                            if not isinstance(
+                                result,
+                                dict
+                            ):
+
+                                continue
+
+                            title = result.get(
+                                "title",
+                                "Unknown title"
+                            )
+
+                            author = result.get(
+                                "author",
+                                ""
+                            )
+
+                            snippet = result.get(
+                                "snippet",
+                                ""
+                            )
+
+                            matched_phrase = result.get(
+                                "phrase",
+                                ""
+                            )
 
                             st.markdown(
-                                f"**{result['title']}**"
+                                f"**{title}**"
                             )
 
-                            if result["author"]:
+                            if author:
 
                                 st.caption(
-                                    f"✍️ {result['author']}"
+                                    f"✍️ {author}"
                                 )
 
-                            st.caption(
-                                f"Search phrase: "
-                                f"{result['phrase']}"
-                            )
-
-                            if result["snippet"]:
+                            if snippet:
 
                                 st.info(
-                                    result["snippet"]
+                                    snippet
+                                )
+
+                            if matched_phrase:
+
+                                st.caption(
+                                    f"Matched phrase: "
+                                    f"{matched_phrase}"
                                 )
 
                             st.write("")
@@ -2445,10 +2503,10 @@ elif st.session_state.awaiting_confirmation:
                     else:
 
                         st.warning(
-                            "Google Books did not return "
-                            "any matches for the page text."
+                            "Google Books returned "
+                            "no usable results."
                         )
-
+                        
                 with st.spinner(
                     "📚 Searching for your book..."
                 ):
