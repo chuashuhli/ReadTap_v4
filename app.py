@@ -2223,26 +2223,6 @@ elif st.session_state.awaiting_confirmation:
                     "✅ Text detected on the book cover!"
                 )
 
-                                # =================================================
-                # TEMPORARY PAGE SEARCH TEST
-                # =================================================
-
-                if st.button(
-                    "🧪 Test Page Search",
-                    use_container_width=True,
-                ):
-
-                    with st.spinner(
-                        "🔎 Testing page text search..."
-                    ):
-
-                        page_test = (
-                            test_page_text_search(
-                                detected_text
-                            )
-                        )
-
-
                     # ------------------------------------------------
                     # SHOW PHRASES BEING SEARCHED
                     # ------------------------------------------------
