@@ -1116,168 +1116,145 @@ def search_books_by_text(text, limit=5):
 
     return unique_results[:limit]
 
-# ============================================================
-# TEST PAGE TEXT SEARCH
-# ============================================================
-
-def test_page_text_search(text):
+def test_page_text_search(ocr_text):
     """
-    Test Google Books using distinctive phrases
-    extracted from an inside-page OCR result.
+    Identify a book from OCR text captured from an inside page.
 
-    This is a temporary test for page identification.
-    It does NOT replace the existing cover search.
+    Strategy:
+    1. Clean OCR text.
+    2. Extract useful/distinctive words.
+    3. Build several loose Google Books queries.
+    4. Collect candidates from Google Books.
+    5. Score candidates against the OCR text.
+    6. Return only reasonably strong matches.
     """
 
     import re
+    import requests
 
-    if not text:
-        return {
-            "phrases": [],
-            "results": [],
-        }
-
+    if not ocr_text or not ocr_text.strip():
+        return []
 
     # --------------------------------------------------------
-    # CLEAN OCR
+    # 1. CLEAN OCR TEXT
     # --------------------------------------------------------
 
-    cleaned = str(text).replace(
-        "\r",
-        "\n"
-    )
+    text = ocr_text.lower()
 
-    lines = cleaned.split("\n")
+    # Remove punctuation but keep words
+    words = re.findall(r"[a-zA-Z]{3,}", text)
 
-    useful_lines = []
+    if not words:
+        return []
 
+    # Common OCR / English words that are not useful for
+    # identifying a particular book.
+    stopwords = {
+        "the", "and", "that", "this", "with", "from",
+        "they", "them", "their", "there", "here",
+        "have", "has", "had", "was", "were", "are",
+        "you", "your", "for", "not", "but", "what",
+        "when", "where", "which", "who", "how",
+        "why", "into", "about", "then", "than",
+        "just", "like", "know", "said", "say",
+        "she", "her", "his", "him", "its", "our",
+        "out", "one", "all", "can", "could",
+        "would", "should", "will", "been", "being",
+        "get", "got", "did", "does", "do",
+        "mom", "dad", "today", "first", "time"
+    }
 
-    # --------------------------------------------------------
-    # REMOVE OBVIOUS UI / OCR NOISE
-    # --------------------------------------------------------
-
-    noise_phrases = [
-        "Does this paragraph resemble a book title?",
-        "S, we can search",
-        "into the book-title",
-        "range to extract the",
-        "ReadTap found",
-        "Possible Books",
-        "See text ReadTap detected",
+    # Keep words that are reasonably distinctive.
+    useful_words = [
+        w for w in words
+        if w not in stopwords and len(w) >= 4
     ]
 
-
-    for line in lines:
-
-        line = line.strip()
-
-        if not line:
-            continue
-
-        lower_line = line.lower()
-
-        skip = False
-
-        for noise in noise_phrases:
-
-            if noise.lower() in lower_line:
-
-                skip = True
-
-                break
-
-        if skip:
-            continue
-
-        useful_lines.append(line)
-
+    # Remove duplicates while preserving order
+    unique_words = list(dict.fromkeys(useful_words))
 
     # --------------------------------------------------------
-    # CREATE SEARCH PHRASES
+    # 2. CREATE SEARCH QUERIES
     # --------------------------------------------------------
 
-    phrases = []
+    queries = []
 
-    for line in useful_lines:
+    # A. Distinctive individual words
+    #
+    # Take the longest words because these tend to be more
+    # useful than generic short words.
+    long_words = sorted(
+        unique_words,
+        key=lambda x: len(x),
+        reverse=True
+    )
 
-        words = line.split()
+    if len(long_words) >= 3:
+        queries.append(" ".join(long_words[:3]))
 
-        # We want reasonably long pieces of prose.
-        if len(words) < 8:
-            continue
+    if len(long_words) >= 5:
+        queries.append(" ".join(long_words[:5]))
 
+    # B. First meaningful words from the page
+    #
+    # These can be useful when the page contains a distinctive
+    # sentence opening.
+    first_words = unique_words[:]
 
-        # Take chunks of 10 words.
-        for i in range(
-            0,
-            len(words),
-            5
-        ):
+    if len(first_words) >= 3:
+        queries.append(" ".join(first_words[:3]))
 
-            chunk = words[
-                i:i + 10
-            ]
+    if len(first_words) >= 5:
+        queries.append(" ".join(first_words[:5]))
 
-            if len(chunk) < 8:
-                continue
+    # C. Look for particularly distinctive phrases around
+    # punctuation / sentence boundaries.
+    sentences = re.split(r"[.!?\n]+", text)
 
-            phrase = " ".join(chunk)
+    for sentence in sentences:
+        sentence_words = re.findall(
+            r"[a-zA-Z]{4,}",
+            sentence
+        )
 
-            phrases.append(
-                phrase
-            )
+        sentence_words = [
+            w for w in sentence_words
+            if w not in stopwords
+        ]
 
+        if len(sentence_words) >= 3:
+            # Use only a short phrase.
+            phrase = " ".join(sentence_words[:5])
+
+            if phrase not in queries:
+                queries.append(phrase)
+
+    # Remove duplicates
+    queries = list(dict.fromkeys(queries))
+
+    # Limit the number of Google Books requests
+    queries = queries[:6]
+
+    print("PAGE SEARCH QUERIES:")
+    for q in queries:
+        print(" -", q)
 
     # --------------------------------------------------------
-    # REMOVE DUPLICATE PHRASES
+    # 3. SEARCH GOOGLE BOOKS
     # --------------------------------------------------------
 
-    unique_phrases = []
+    candidates = {}
 
-    seen = set()
-
-    for phrase in phrases:
-
-        key = phrase.lower().strip()
-
-        if key not in seen:
-
-            seen.add(key)
-
-            unique_phrases.append(
-                phrase
-            )
-
-
-    # Test only the first 6 phrases.
-    unique_phrases = unique_phrases[:6]
-
-
-    # --------------------------------------------------------
-    # SEARCH GOOGLE BOOKS
-    # --------------------------------------------------------
-
-    results = []
-
-
-    for phrase in unique_phrases:
+    for query in queries:
 
         try:
-
-            url = (
-                "https://www.googleapis.com/books/v1/volumes"
-            )
-
-            params = {
-                "q": f'"{phrase}"',
-                "maxResults": 10,
-                "printType": "books",
-            }
-
             response = requests.get(
-                url,
-                params=params,
-                timeout=10,
+                "https://www.googleapis.com/books/v1/volumes",
+                params={
+                    "q": query,
+                    "maxResults": 10
+                },
+                timeout=10
             )
 
             if response.status_code != 200:
@@ -1285,86 +1262,145 @@ def test_page_text_search(text):
 
             data = response.json()
 
-            items = data.get(
-                "items",
-                []
-            )
-
-
-            for item in items:
+            for item in data.get("items", []):
 
                 volume_info = item.get(
                     "volumeInfo",
                     {}
                 )
 
-                title = str(
-                    volume_info.get(
-                        "title",
-                        ""
-                    )
+                title = volume_info.get(
+                    "title",
+                    ""
                 ).strip()
 
                 if not title:
                     continue
-
 
                 authors = volume_info.get(
                     "authors",
                     []
                 )
 
-                author = (
-                    ", ".join(authors)
-                    if authors
-                    else ""
-                )
-
-
-                search_info = item.get(
-                    "searchInfo",
-                    {}
-                )
-
-                snippet = str(
-                    search_info.get(
-                        "textSnippet",
-                        ""
-                    )
-                ).strip()
-
-
-                image_links = volume_info.get(
-                    "imageLinks",
-                    {}
-                )
-
-                cover_url = image_links.get(
-                    "thumbnail",
+                description = volume_info.get(
+                    "description",
                     ""
                 )
 
-
-                results.append(
-                    {
-                        "title": title,
-                        "author": author,
-                        "cover_url": cover_url,
-                        "snippet": snippet,
-                        "phrase": phrase,
-                    }
+                categories = volume_info.get(
+                    "categories",
+                    []
                 )
 
+                # Combine searchable book metadata
+                metadata = " ".join([
+                    title,
+                    " ".join(authors),
+                    description,
+                    " ".join(categories)
+                ]).lower()
 
-        except Exception:
+                candidates[item.get("id", title)] = {
+                    "title": title,
+                    "authors": authors,
+                    "description": description,
+                    "metadata": metadata,
+                    "cover_url": (
+                        volume_info
+                        .get("imageLinks", {})
+                        .get("thumbnail", "")
+                    ),
+                    "google_books_id": item.get("id"),
+                    "query_hits": candidates.get(
+                        item.get("id", title),
+                        {}
+                    ).get("query_hits", 0) + 1
+                }
 
-            continue
+        except Exception as e:
+            print(
+                f"Google Books search error for "
+                f"'{query}': {e}"
+            )
 
+    # --------------------------------------------------------
+    # 4. SCORE CANDIDATES
+    # --------------------------------------------------------
 
-    return {
-        "phrases": unique_phrases,
-        "results": results,
-    }
+    ocr_words = set(
+        w for w in words
+        if len(w) >= 4
+    )
+
+    results = []
+
+    for candidate in candidates.values():
+
+        metadata = candidate["metadata"]
+
+        metadata_words = set(
+            re.findall(
+                r"[a-zA-Z]{4,}",
+                metadata
+            )
+        )
+
+        # Number of OCR words appearing in the metadata
+        word_matches = ocr_words.intersection(
+            metadata_words
+        )
+
+        word_score = len(word_matches)
+
+        # Reward candidates returned by multiple queries
+        query_score = candidate["query_hits"]
+
+        # Overall score
+        score = (
+            word_score * 2
+            + query_score * 3
+        )
+
+        candidate["score"] = score
+        candidate["matched_words"] = list(
+            word_matches
+        )
+
+        results.append(candidate)
+
+    # --------------------------------------------------------
+    # 5. SORT BEST MATCHES FIRST
+    # --------------------------------------------------------
+
+    results.sort(
+        key=lambda x: x["score"],
+        reverse=True
+    )
+
+    # --------------------------------------------------------
+    # 6. REMOVE WEAK RESULTS
+    # --------------------------------------------------------
+
+    # We don't want random books appearing just because
+    # Google Books returned them.
+    strong_results = [
+        r for r in results
+        if r["score"] >= 5
+    ]
+
+    # Maximum 5 candidates shown to user
+    strong_results = strong_results[:5]
+
+    print("\nPAGE SEARCH RESULTS:")
+
+    for result in strong_results:
+        print(
+            f" - {result['title']} "
+            f"(score={result['score']}, "
+            f"matched={result['matched_words']})"
+        )
+
+    return strong_results
 
 # ============================================================
 # CUSTOM CSS
