@@ -2171,6 +2171,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "← Back",
+            key="back_from_isbn",
             use_container_width=True,
         ):
 
@@ -2224,61 +2225,15 @@ elif st.session_state.awaiting_confirmation:
                 )
 
                 # ------------------------------------------------
-                # SHOW PHRASES BEING SEARCHED
+                # SEARCH FOR POSSIBLE BOOKS
                 # ------------------------------------------------
 
-                st.markdown(
-                    "### 🔎 Search phrases ReadTap generated"
-                )
-
-                for phrase in page_test["phrases"]:
-
-                    st.write(
-                        f'• "{phrase}"'
+                with st.spinner(
+                    "📚 Searching for matching books..."
+                ):
+                    candidates = search_books_by_text(
+                        detected_text
                     )
-
-
-                    # ------------------------------------------------
-                    # SHOW GOOGLE BOOKS RESULTS
-                    # ------------------------------------------------
-
-                    st.markdown(
-                        "### 📚 Google Books results"
-                    )
-
-                    if page_test["results"]:
-
-                        for result in page_test["results"]:
-
-                            st.markdown(
-                                f"**{result['title']}**"
-                            )
-
-                            if result["author"]:
-
-                                st.caption(
-                                    f"✍️ {result['author']}"
-                                )
-
-                            if result["snippet"]:
-
-                                st.info(
-                                    result["snippet"]
-                                )
-
-                            st.caption(
-                                f"Matched phrase: "
-                                f"{result['phrase']}"
-                            )
-
-                            st.write("")
-
-                    else:
-
-                        st.warning(
-                            "Google Books returned "
-                            "no matches."
-                        )
 
                 if candidates:
 
@@ -2299,6 +2254,7 @@ elif st.session_state.awaiting_confirmation:
                         "Text detected by ReadTap",
                         detected_text,
                         height=150,
+                        key="cover_detected_text",
                     )
 
                     st.info(
@@ -2319,6 +2275,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "← Back",
+            key="back_from_cover",
             use_container_width=True,
         ):
 
@@ -2488,122 +2445,11 @@ elif st.session_state.awaiting_confirmation:
                         )
                         
                                 # =================================================
-                # TEMPORARY PAGE SEARCH TEST
-                # =================================================
-
-                if st.button(
-                    "🧪 Test Page Search",
-                    use_container_width=True,
-                ):
-
-                    with st.spinner(
-                        "🔎 Testing page text search..."
-                    ):
-
-                        page_test = (
-                            test_page_text_search(
-                                detected_text
-                            )
-                        )
-
-                    # ------------------------------------------------
-                    # SHOW SEARCH PHRASES
-                    # ------------------------------------------------
-
-                    st.markdown(
-                        "### 🔎 Search phrases"
-                    )
-
-                    phrases = page_test.get(
-                        "phrases",
-                        []
-                    )
-
-                    for phrase in phrases:
-
-                        st.write(
-                            f'• "{phrase}"'
-                        )
-
-
-                    # ------------------------------------------------
-                    # SHOW GOOGLE BOOKS RESULTS
-                    # ------------------------------------------------
-
-                    st.markdown(
-                        "### 📚 Google Books results"
-                    )
-
-                    results = page_test.get(
-                        "results",
-                        []
-                    )
-
-                    if results:
-
-                        for result in results:
-
-                            if not isinstance(
-                                result,
-                                dict
-                            ):
-
-                                continue
-
-                            title = result.get(
-                                "title",
-                                "Unknown title"
-                            )
-
-                            author = result.get(
-                                "author",
-                                ""
-                            )
-
-                            snippet = result.get(
-                                "snippet",
-                                ""
-                            )
-
-                            matched_phrase = result.get(
-                                "phrase",
-                                ""
-                            )
-
-                            st.markdown(
-                                f"**{title}**"
-                            )
-
-                            if author:
-
-                                st.caption(
-                                    f"✍️ {author}"
-                                )
-
-                            if snippet:
-
-                                st.info(
-                                    snippet
-                                )
-
-                            st.caption(
-                                "Matched phrase: "
-                                + matched_phrase
-                            )
-
-                            st.write("")
-
-                    else:
-
-                        st.warning(
-                            "Google Books returned "
-                            "no usable results."
-                        )
-
                     st.text_area(
                         "Text detected by ReadTap",
                         detected_text,
                         height=150,
+                        key="page_detected_text",
                     )
 
                     st.info(
@@ -2625,6 +2471,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "← Back",
+            key="back_from_page",
             use_container_width=True,
         ):
 
@@ -2758,6 +2605,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "🔄 Scan Again",
+            key="scan_again_book_found",
             use_container_width=True,
         ):
 
@@ -2773,6 +2621,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "✏️ Enter Title Manually",
+            key="manual_entry_book_found",
             use_container_width=True,
         ):
 
@@ -2894,6 +2743,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "🔄 Scan Again",
+            key="scan_again_candidates",
             use_container_width=True,
         ):
 
@@ -2913,6 +2763,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "✏️ Enter Title Manually",
+            key="manual_entry_candidates",
             use_container_width=True,
         ):
 
