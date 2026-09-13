@@ -35,8 +35,8 @@ try:
         print("OpenAI client initialised successfully.")
 
 except Exception as e:
-    print("OpenAI client initialisation failed:", repr(e))
-
+    openai_client = None
+    st.error(f"OpenAI initialisation error: {e}")
 
 # ============================================================
 # PAGE CONFIG
