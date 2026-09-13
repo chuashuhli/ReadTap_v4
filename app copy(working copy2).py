@@ -4,7 +4,6 @@ import numpy as np
 import zxingcpp
 import requests
 
-from openai import OpenAI
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -18,18 +17,6 @@ from database import (
     stop_reading,
     finish_reading,
 )
-
-# ============================================================
-# OPENAI CLIENT
-# ============================================================
-
-try:
-    openai_client = OpenAI(
-        api_key=st.secrets["OPENAI_API_KEY"]
-    )
-except Exception as e:
-    openai_client = None
-    print("OpenAI client could not be initialised:", e)
 
 
 # ============================================================
@@ -1414,32 +1401,6 @@ def test_page_text_search(ocr_text):
         )
 
     return strong_results
-
-# ============================================================
-# TEST OPENAI CONNECTION
-# ============================================================
-
-def test_openai_connection():
-    """
-    Tests whether ReadTap can communicate with OpenAI.
-    """
-
-    if openai_client is None:
-        return False, "OpenAI client was not initialised."
-
-    try:
-        response = openai_client.responses.create(
-            model="gpt-4.1-mini",
-            input="Reply with exactly: ReadTap connection successful"
-        )
-
-        result = response.output_text.strip()
-
-        return True, result
-
-    except Exception as e:
-        return False, f"OpenAI connection failed: {str(e)}"
-
 
 # ============================================================
 # CUSTOM CSS
@@ -3066,18 +3027,6 @@ elif st.session_state.awaiting_confirmation:
                     st.session_state.show_summary = True
 
                     st.rerun()
-
-# ============================================================
-# TEMPORARY OPENAI CONNECTION TEST
-# ============================================================
-
-if st.button("🔌 Test OpenAI Connection"):
-    success, message = test_openai_connection()
-
-    if success:
-        st.success(message)
-    else:
-        st.error(message)
 
 
 # ============================================================
