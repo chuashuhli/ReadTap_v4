@@ -27,16 +27,16 @@ openai_client = None
 
 try:
     if "OPENAI_API_KEY" not in st.secrets:
-        print("ERROR: OPENAI_API_KEY was not found in Streamlit Secrets.")
+        st.error("OPENAI ERROR: OPENAI_API_KEY was not found in Streamlit Secrets.")
     else:
         openai_client = OpenAI(
             api_key=st.secrets["OPENAI_API_KEY"]
         )
-        print("OpenAI client initialised successfully.")
+        st.success("OpenAI client initialised successfully.")
 
 except Exception as e:
     openai_client = None
-    st.error(f"OpenAI initialisation error: {e}")
+    st.error(f"OPENAI INIT ERROR: {repr(e)}")
 
 # ============================================================
 # PAGE CONFIG
