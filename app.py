@@ -23,13 +23,19 @@ from database import (
 # OPENAI CLIENT
 # ============================================================
 
+openai_client = None
+
 try:
-    openai_client = OpenAI(
-        api_key=st.secrets["OPENAI_API_KEY"]
-    )
+    if "OPENAI_API_KEY" not in st.secrets:
+        print("ERROR: OPENAI_API_KEY was not found in Streamlit Secrets.")
+    else:
+        openai_client = OpenAI(
+            api_key=st.secrets["OPENAI_API_KEY"]
+        )
+        print("OpenAI client initialised successfully.")
+
 except Exception as e:
-    openai_client = None
-    print("OpenAI client could not be initialised:", e)
+    print("OpenAI client initialisation failed:", repr(e))
 
 
 # ============================================================
