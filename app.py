@@ -1141,156 +1141,420 @@ def test_page_text_search(ocr_text):
 
     Strategy:
     1. Clean OCR text.
-    2. Extract useful/distinctive words.
-    3. Build several loose Google Books queries.
-    4. Collect candidates from Google Books.
-    5. Score candidates against the OCR text.
-    6. Return only reasonably strong matches.
+    2. Extract distinctive words and short phrases.
+    3. Search Google Books using several targeted queries.
+    4. Capture Google's textSnippet for each result.
+    5. Compare OCR text against:
+       - Google Books textSnippet
+       - title
+       - author
+       - description
+       - categories
+    6. Reward books returned by multiple search queries.
+    7. Rank candidates and return the strongest matches.
+
+    This function is designed specifically for INSIDE-PAGE scanning.
+    It does not change the existing cover-search function.
     """
 
     import re
     import requests
+    from collections import Counter
 
-    if not ocr_text or not ocr_text.strip():
+    # ========================================================
+    # 1. BASIC VALIDATION
+    # ========================================================
+
+    if not ocr_text or not str(ocr_text).strip():
         return []
 
-    # --------------------------------------------------------
-    # 1. CLEAN OCR TEXT
-    # --------------------------------------------------------
+    text = str(ocr_text).strip()
 
-    text = ocr_text.lower()
+    # ========================================================
+    # 2. NORMALISE OCR TEXT
+    # ========================================================
 
-    # Remove punctuation but keep words
-    words = re.findall(r"[a-zA-Z]{3,}", text)
+    text_lower = text.lower()
+
+    # Fix a few common OCR mistakes.
+    ocr_corrections = {
+        "whimpy": "wimpy",
+        "wimpyy": "wimpy",
+        "kidss": "kids",
+        "diarry": "diary",
+        "journnal": "journal",
+        "jounal": "journal",
+    }
+
+    for wrong, correct in ocr_corrections.items():
+        text_lower = re.sub(
+            rf"\b{re.escape(wrong)}\b",
+            correct,
+            text_lower
+        )
+
+    # Extract normal words.
+    words = re.findall(
+        r"[a-zA-Z]{3,}",
+        text_lower
+    )
 
     if not words:
         return []
 
-    # Common OCR / English words that are not useful for
-    # identifying a particular book.
+    # ========================================================
+    # 3. STOPWORDS
+    # ========================================================
+
     stopwords = {
-        "the", "and", "that", "this", "with", "from",
-        "they", "them", "their", "there", "here",
-        "have", "has", "had", "was", "were", "are",
-        "you", "your", "for", "not", "but", "what",
-        "when", "where", "which", "who", "how",
-        "why", "into", "about", "then", "than",
-        "just", "like", "know", "said", "say",
-        "she", "her", "his", "him", "its", "our",
-        "out", "one", "all", "can", "could",
-        "would", "should", "will", "been", "being",
-        "get", "got", "did", "does", "do",
-        "mom", "dad", "today", "first", "time"
+        "the",
+        "and",
+        "that",
+        "this",
+        "with",
+        "from",
+        "they",
+        "them",
+        "their",
+        "there",
+        "here",
+        "have",
+        "has",
+        "had",
+        "was",
+        "were",
+        "are",
+        "you",
+        "your",
+        "for",
+        "not",
+        "but",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "how",
+        "why",
+        "into",
+        "about",
+        "then",
+        "than",
+        "just",
+        "like",
+        "know",
+        "said",
+        "say",
+        "she",
+        "her",
+        "his",
+        "him",
+        "its",
+        "our",
+        "out",
+        "one",
+        "all",
+        "can",
+        "could",
+        "would",
+        "should",
+        "will",
+        "been",
+        "being",
+        "get",
+        "got",
+        "did",
+        "does",
+        "doing",
+        "mom",
+        "dad",
+        "today",
+        "first",
+        "time",
+        "went",
+        "going",
+        "come",
+        "came",
+        "back",
+        "really",
+        "thing",
+        "things",
+        "just",
+        "even",
+        "because",
+        "very",
+        "much",
+        "more",
+        "some",
+        "them",
+        "then",
+        "than",
+        "only",
+        "over",
+        "under",
+        "before",
+        "after",
+        "while",
+        "through",
+        "down",
+        "from",
+        "onto",
+        "also",
+        "still",
+        "made",
+        "make",
+        "know",
+        "think",
+        "thought",
     }
 
-    # Keep words that are reasonably distinctive.
+    # ========================================================
+    # 4. CREATE USEFUL WORD LIST
+    # ========================================================
+
     useful_words = [
-        w for w in words
-        if w not in stopwords and len(w) >= 4
+        word
+        for word in words
+        if (
+            word not in stopwords
+            and len(word) >= 4
+        )
     ]
 
-    # Remove duplicates while preserving order
-    unique_words = list(dict.fromkeys(useful_words))
+    # Preserve order while removing duplicates.
+    unique_words = list(
+        dict.fromkeys(useful_words)
+    )
 
-    # --------------------------------------------------------
-    # 2. CREATE SEARCH QUERIES
-    # --------------------------------------------------------
+    if not unique_words:
+        return []
 
-    queries = []
+    # ========================================================
+    # 5. IDENTIFY DISTINCTIVE WORDS
+    # ========================================================
 
-    # A. Distinctive individual words
-    #
-    # Take the longest words because these tend to be more
-    # useful than generic short words.
-    long_words = sorted(
-        unique_words,
+    # Words appearing only once are often more useful than
+    # extremely common words.
+    word_counts = Counter(words)
+
+    distinctive_words = [
+        word
+        for word in unique_words
+        if word_counts[word] == 1
+    ]
+
+    # Prefer longer distinctive words.
+    distinctive_words = sorted(
+        distinctive_words,
         key=lambda x: len(x),
         reverse=True
     )
 
-    if len(long_words) >= 3:
-        queries.append(" ".join(long_words[:3]))
+    # ========================================================
+    # 6. BUILD SEARCH PHRASES
+    # ========================================================
 
-    if len(long_words) >= 5:
-        queries.append(" ".join(long_words[:5]))
+    queries = []
 
-    # B. First meaningful words from the page
-    #
-    # These can be useful when the page contains a distinctive
-    # sentence opening.
-    first_words = unique_words[:]
+    # --------------------------------------------------------
+    # A. Consecutive phrases from the ORIGINAL OCR
+    # --------------------------------------------------------
 
-    if len(first_words) >= 3:
-        queries.append(" ".join(first_words[:3]))
+    # Keep the original word order because book text is
+    # sequential. This is much better than simply taking
+    # the longest words from the entire page.
+    original_words = re.findall(
+        r"[a-zA-Z]{3,}",
+        text_lower
+    )
 
-    if len(first_words) >= 5:
-        queries.append(" ".join(first_words[:5]))
+    # Create short 5-word windows.
+    for i in range(
+        max(0, len(original_words) - 4)
+    ):
+        phrase_words = original_words[i:i + 5]
 
-    # C. Look for particularly distinctive phrases around
-    # punctuation / sentence boundaries.
-    sentences = re.split(r"[.!?\n]+", text)
+        meaningful_count = sum(
+            1
+            for w in phrase_words
+            if w not in stopwords
+        )
+
+        if meaningful_count >= 2:
+            phrase = " ".join(
+                phrase_words
+            )
+
+            if phrase not in queries:
+                queries.append(phrase)
+
+    # --------------------------------------------------------
+    # B. Sentences from OCR
+    # --------------------------------------------------------
+
+    sentences = re.split(
+        r"[.!?\n]+",
+        text_lower
+    )
 
     for sentence in sentences:
+
         sentence_words = re.findall(
             r"[a-zA-Z]{4,}",
             sentence
         )
 
-        sentence_words = [
-            w for w in sentence_words
+        if not sentence_words:
+            continue
+
+        # Remove generic words.
+        meaningful_sentence_words = [
+            w
+            for w in sentence_words
             if w not in stopwords
         ]
 
-        if len(sentence_words) >= 3:
-            # Use only a short phrase.
-            phrase = " ".join(sentence_words[:5])
+        if len(meaningful_sentence_words) >= 3:
+
+            # Take a maximum of 6 words.
+            phrase = " ".join(
+                meaningful_sentence_words[:6]
+            )
 
             if phrase not in queries:
                 queries.append(phrase)
 
-    # Remove duplicates
-    queries = list(dict.fromkeys(queries))
-
-    # Limit the number of Google Books requests
-    queries = queries[:6]
-
-    print("PAGE SEARCH QUERIES:")
-    for q in queries:
-        print(" -", q)
-
     # --------------------------------------------------------
-    # 3. SEARCH GOOGLE BOOKS
+    # C. Distinctive word combinations
     # --------------------------------------------------------
 
-    candidates = {}
+    if len(distinctive_words) >= 3:
+
+        queries.append(
+            " ".join(
+                distinctive_words[:3]
+            )
+        )
+
+    if len(distinctive_words) >= 5:
+
+        queries.append(
+            " ".join(
+                distinctive_words[:5]
+            )
+        )
+
+    # --------------------------------------------------------
+    # D. Original first meaningful words
+    # --------------------------------------------------------
+
+    if len(unique_words) >= 4:
+
+        queries.append(
+            " ".join(
+                unique_words[:4]
+            )
+        )
+
+    if len(unique_words) >= 6:
+
+        queries.append(
+            " ".join(
+                unique_words[:6]
+            )
+        )
+
+    # ========================================================
+    # 7. CLEAN / DEDUPLICATE QUERIES
+    # ========================================================
+
+    cleaned_queries = []
+
+    seen_queries = set()
 
     for query in queries:
 
+        query = re.sub(
+            r"\s+",
+            " ",
+            query
+        ).strip()
+
+        if not query:
+            continue
+
+        # Avoid extremely short queries.
+        if len(query.split()) < 3:
+            continue
+
+        key = query.lower()
+
+        if key in seen_queries:
+            continue
+
+        seen_queries.add(key)
+        cleaned_queries.append(query)
+
+    # Limit API calls.
+    # We want several different phrases, but not too many.
+    cleaned_queries = cleaned_queries[:10]
+
+    print("\nPAGE SEARCH QUERIES:")
+
+    for query in cleaned_queries:
+        print(" -", query)
+
+    if not cleaned_queries:
+        return []
+
+    # ========================================================
+    # 8. SEARCH GOOGLE BOOKS
+    # ========================================================
+
+    candidates = {}
+
+    for query in cleaned_queries:
+
         try:
+
             response = requests.get(
                 "https://www.googleapis.com/books/v1/volumes",
                 params={
                     "q": query,
-                    "maxResults": 10
+                    "maxResults": 10,
+                    "orderBy": "relevance",
+                    "printType": "books",
                 },
                 timeout=10
             )
 
             if response.status_code != 200:
+                print(
+                    f"Google Books HTTP "
+                    f"{response.status_code} "
+                    f"for query: {query}"
+                )
                 continue
 
             data = response.json()
 
-            for item in data.get("items", []):
+            items = data.get(
+                "items",
+                []
+            )
+
+            for item in items:
 
                 volume_info = item.get(
                     "volumeInfo",
                     {}
                 )
 
-                title = volume_info.get(
-                    "title",
-                    ""
+                title = str(
+                    volume_info.get(
+                        "title",
+                        ""
+                    )
                 ).strip()
 
                 if not title:
@@ -1301,9 +1565,23 @@ def test_page_text_search(ocr_text):
                     []
                 )
 
-                description = volume_info.get(
-                    "description",
-                    ""
+                if not isinstance(
+                    authors,
+                    list
+                ):
+                    authors = []
+
+                author = ", ".join(
+                    str(a)
+                    for a in authors
+                    if a
+                )
+
+                description = str(
+                    volume_info.get(
+                        "description",
+                        ""
+                    )
                 )
 
                 categories = volume_info.get(
@@ -1311,115 +1589,656 @@ def test_page_text_search(ocr_text):
                     []
                 )
 
-                # Combine searchable book metadata
+                if not isinstance(
+                    categories,
+                    list
+                ):
+                    categories = []
+
+                # ------------------------------------------------
+                # IMPORTANT:
+                # Google Books provides textSnippet under
+                # searchInfo.
+                # ------------------------------------------------
+
+                search_info = item.get(
+                    "searchInfo",
+                    {}
+                )
+
+                snippet = str(
+                    search_info.get(
+                        "textSnippet",
+                        ""
+                    )
+                ).strip()
+
+                # Remove HTML tags sometimes present in snippets.
+                snippet_clean = re.sub(
+                    r"<[^>]+>",
+                    " ",
+                    snippet
+                )
+
+                snippet_clean = re.sub(
+                    r"\s+",
+                    " ",
+                    snippet_clean
+                ).strip()
+
                 metadata = " ".join([
                     title,
-                    " ".join(authors),
+                    author,
                     description,
-                    " ".join(categories)
+                    " ".join(categories),
                 ]).lower()
 
-                candidates[item.get("id", title)] = {
-                    "title": title,
-                    "authors": authors,
-                    "description": description,
-                    "metadata": metadata,
-                    "cover_url": (
-                        volume_info
-                        .get("imageLinks", {})
-                        .get("thumbnail", "")
-                    ),
-                    "google_books_id": item.get("id"),
-                    "query_hits": candidates.get(
-                        item.get("id", title),
-                        {}
-                    ).get("query_hits", 0) + 1
-                }
+                book_id = item.get(
+                    "id"
+                )
+
+                if not book_id:
+                    book_id = (
+                        title.lower()
+                        + "|"
+                        + author.lower()
+                    )
+
+                if book_id not in candidates:
+
+                    candidates[book_id] = {
+                        "title": title,
+                        "author": author,
+                        "description": description,
+                        "categories": categories,
+                        "metadata": metadata,
+                        "snippet": snippet_clean,
+                        "cover_url": (
+                            volume_info
+                            .get(
+                                "imageLinks",
+                                {}
+                            )
+                            .get(
+                                "thumbnail",
+                                ""
+                            )
+                        ),
+                        "google_books_id": (
+                            item.get("id")
+                        ),
+                        "query_hits": 1,
+                        "matched_queries": [
+                            query
+                        ],
+                    }
+
+                else:
+
+                    candidate = candidates[
+                        book_id
+                    ]
+
+                    candidate[
+                        "query_hits"
+                    ] += 1
+
+                    candidate[
+                        "matched_queries"
+                    ].append(query)
+
+                    # Keep a useful snippet if the first
+                    # result did not contain one.
+                    if (
+                        not candidate.get(
+                            "snippet"
+                        )
+                        and snippet_clean
+                    ):
+                        candidate[
+                            "snippet"
+                        ] = snippet_clean
 
         except Exception as e:
+
             print(
-                f"Google Books search error for "
-                f"'{query}': {e}"
+                "Google Books search error "
+                f"for '{query}': {e}"
             )
 
-    # --------------------------------------------------------
-    # 4. SCORE CANDIDATES
-    # --------------------------------------------------------
+            continue
+
+    # ========================================================
+    # 9. NO GOOGLE RESULTS
+    # ========================================================
+
+    if not candidates:
+
+        print(
+            "\nPAGE SEARCH RESULTS: "
+            "No Google Books candidates."
+        )
+
+        return []
+
+    # ========================================================
+    # 10. NORMALISE TEXT FOR MATCHING
+    # ========================================================
+
+    def normalise_for_matching(value):
+
+        value = str(
+            value or ""
+        ).lower()
+
+        value = re.sub(
+            r"<[^>]+>",
+            " ",
+            value
+        )
+
+        value = re.sub(
+            r"[^a-z0-9\s]",
+            " ",
+            value
+        )
+
+        value = re.sub(
+            r"\s+",
+            " ",
+            value
+        )
+
+        return value.strip()
+
+    ocr_normalised = normalise_for_matching(
+        text_lower
+    )
 
     ocr_words = set(
-        w for w in words
-        if len(w) >= 4
+        w
+        for w in re.findall(
+            r"[a-z]{4,}",
+            ocr_normalised
+        )
+        if w not in stopwords
     )
+
+    # ========================================================
+    # 11. CREATE OCR PHRASES FOR MATCHING
+    # ========================================================
+
+    ocr_phrases = []
+
+    # Use consecutive 4-word phrases.
+    ocr_word_list = re.findall(
+        r"[a-z]{3,}",
+        ocr_normalised
+    )
+
+    for i in range(
+        max(0, len(ocr_word_list) - 3)
+    ):
+
+        phrase_words = ocr_word_list[
+            i:i + 4
+        ]
+
+        meaningful = [
+            w
+            for w in phrase_words
+            if w not in stopwords
+        ]
+
+        if len(meaningful) >= 2:
+
+            phrase = " ".join(
+                phrase_words
+            )
+
+            ocr_phrases.append(
+                phrase
+            )
+
+    # Remove duplicate phrases.
+    ocr_phrases = list(
+        dict.fromkeys(
+            ocr_phrases
+        )
+    )
+
+    # ========================================================
+    # 12. SCORE CANDIDATES
+    # ========================================================
 
     results = []
 
     for candidate in candidates.values():
 
-        metadata = candidate["metadata"]
+        title = normalise_for_matching(
+            candidate.get(
+                "title",
+                ""
+            )
+        )
+
+        author = normalise_for_matching(
+            candidate.get(
+                "author",
+                ""
+            )
+        )
+
+        description = normalise_for_matching(
+            candidate.get(
+                "description",
+                ""
+            )
+        )
+
+        categories = normalise_for_matching(
+            " ".join(
+                candidate.get(
+                    "categories",
+                    []
+                )
+            )
+        )
+
+        snippet = normalise_for_matching(
+            candidate.get(
+                "snippet",
+                ""
+            )
+        )
+
+        metadata = " ".join([
+            title,
+            author,
+            description,
+            categories,
+        ])
 
         metadata_words = set(
             re.findall(
-                r"[a-zA-Z]{4,}",
+                r"[a-z]{4,}",
                 metadata
             )
         )
 
-        # Number of OCR words appearing in the metadata
-        word_matches = ocr_words.intersection(
-            metadata_words
+        snippet_words = set(
+            re.findall(
+                r"[a-z]{4,}",
+                snippet
+            )
         )
 
-        word_score = len(word_matches)
+        score = 0
 
-        # Reward candidates returned by multiple queries
-        query_score = candidate["query_hits"]
+        matched_words = []
 
-        # Overall score
-        score = (
-            word_score * 2
-            + query_score * 3
+        # ----------------------------------------------------
+        # A. WORD MATCHES IN GOOGLE TEXT SNIPPET
+        # ----------------------------------------------------
+
+        snippet_matches = (
+            ocr_words.intersection(
+                snippet_words
+            )
+        )
+
+        if snippet_matches:
+
+            score += (
+                len(snippet_matches) * 8
+            )
+
+            matched_words.extend(
+                snippet_matches
+            )
+
+        # ----------------------------------------------------
+        # B. WORD MATCHES IN METADATA
+        # ----------------------------------------------------
+
+        metadata_matches = (
+            ocr_words.intersection(
+                metadata_words
+            )
+        )
+
+        if metadata_matches:
+
+            score += (
+                len(metadata_matches) * 2
+            )
+
+            matched_words.extend(
+                metadata_matches
+            )
+
+        # ----------------------------------------------------
+        # C. EXACT PHRASE MATCH IN SNIPPET
+        # ----------------------------------------------------
+
+        phrase_matches = []
+
+        for phrase in ocr_phrases:
+
+            if (
+                phrase
+                and phrase in snippet
+            ):
+
+                phrase_matches.append(
+                    phrase
+                )
+
+                # Strong evidence.
+                score += 25
+
+        # ----------------------------------------------------
+        # D. PARTIAL PHRASE MATCH
+        # ----------------------------------------------------
+
+        for phrase in ocr_phrases:
+
+            phrase_words = [
+                w
+                for w in phrase.split()
+                if w not in stopwords
+            ]
+
+            if len(phrase_words) < 2:
+                continue
+
+            matched_count = sum(
+                1
+                for w in phrase_words
+                if w in snippet_words
+            )
+
+            # At least 2 words from a phrase
+            # appearing in the snippet is useful.
+            if matched_count >= 2:
+
+                score += (
+                    matched_count * 5
+                )
+
+        # ----------------------------------------------------
+        # E. TITLE MATCH
+        # ----------------------------------------------------
+
+        title_matches = (
+            ocr_words.intersection(
+                set(
+                    re.findall(
+                        r"[a-z]{4,}",
+                        title
+                    )
+                )
+            )
+        )
+
+        if title_matches:
+
+            # Title matches are highly valuable,
+            # because these are actual book-title words.
+            score += (
+                len(title_matches) * 12
+            )
+
+            matched_words.extend(
+                title_matches
+            )
+
+        # ----------------------------------------------------
+        # F. AUTHOR MATCH
+        # ----------------------------------------------------
+
+        author_words = set(
+            re.findall(
+                r"[a-z]{4,}",
+                author
+            )
+        )
+
+        author_matches = (
+            ocr_words.intersection(
+                author_words
+            )
+        )
+
+        if author_matches:
+
+            score += (
+                len(author_matches) * 10
+            )
+
+            matched_words.extend(
+                author_matches
+            )
+
+        # ----------------------------------------------------
+        # G. MULTIPLE QUERY HITS
+        # ----------------------------------------------------
+
+        query_hits = int(
+            candidate.get(
+                "query_hits",
+                1
+            )
+        )
+
+        if query_hits >= 2:
+
+            score += (
+                (query_hits - 1) * 8
+            )
+
+        # ----------------------------------------------------
+        # H. DISTINCTIVE WORDS
+        # ----------------------------------------------------
+
+        distinctive_matches = (
+            set(distinctive_words)
+            .intersection(
+                snippet_words
+            )
+        )
+
+        if distinctive_matches:
+
+            score += (
+                len(distinctive_matches)
+                * 10
+            )
+
+            matched_words.extend(
+                distinctive_matches
+            )
+
+        # Remove duplicates.
+        matched_words = list(
+            dict.fromkeys(
+                matched_words
+            )
         )
 
         candidate["score"] = score
-        candidate["matched_words"] = list(
-            word_matches
+
+        candidate[
+            "matched_words"
+        ] = matched_words
+
+        candidate[
+            "phrase_matches"
+        ] = phrase_matches
+
+        results.append(
+            candidate
         )
 
-        results.append(candidate)
-
-    # --------------------------------------------------------
-    # 5. SORT BEST MATCHES FIRST
-    # --------------------------------------------------------
+    # ========================================================
+    # 13. SORT RESULTS
+    # ========================================================
 
     results.sort(
-        key=lambda x: x["score"],
+        key=lambda x: x.get(
+            "score",
+            0
+        ),
         reverse=True
     )
 
-    # --------------------------------------------------------
-    # 6. REMOVE WEAK RESULTS
-    # --------------------------------------------------------
+    # ========================================================
+    # 14. REMOVE WEAK / RANDOM RESULTS
+    # ========================================================
 
-    # We don't want random books appearing just because
-    # Google Books returned them.
-    strong_results = [
-        r for r in results
-        if r["score"] >= 5
-    ]
+    # Require stronger evidence for inside-page matches.
+    #
+    # A result can qualify if:
+    # - it has a reasonably strong score, OR
+    # - Google returned a snippet containing an OCR phrase.
+    #
+    strong_results = []
 
-    # Maximum 5 candidates shown to user
-    strong_results = strong_results[:5]
+    for result in results:
 
-    print("\nPAGE SEARCH RESULTS:")
-
-    for result in strong_results:
-        print(
-            f" - {result['title']} "
-            f"(score={result['score']}, "
-            f"matched={result['matched_words']})"
+        score = result.get(
+            "score",
+            0
         )
 
-    return strong_results
+        snippet = result.get(
+            "snippet",
+            ""
+        )
+
+        phrase_matches = result.get(
+            "phrase_matches",
+            []
+        )
+
+        if (
+            score >= 12
+            or (
+                snippet
+                and phrase_matches
+            )
+        ):
+
+            strong_results.append(
+                result
+            )
+
+    # Maximum 5 candidates.
+    strong_results = (
+        strong_results[:5]
+    )
+
+    # ========================================================
+    # 15. CONVERT TO THE FORMAT USED BY YOUR UI
+    # ========================================================
+
+    final_results = []
+
+    for result in strong_results:
+
+        final_results.append(
+            {
+                "title": result.get(
+                    "title",
+                    "Unknown title"
+                ),
+
+                "author": result.get(
+                    "author",
+                    ""
+                ),
+
+                "snippet": result.get(
+                    "snippet",
+                    ""
+                ),
+
+                "phrase": (
+                    result.get(
+                        "phrase_matches",
+                        []
+                    )[0]
+                    if result.get(
+                        "phrase_matches",
+                        []
+                    )
+                    else (
+                        result.get(
+                            "matched_queries",
+                            [""]
+                        )[0]
+                        if result.get(
+                            "matched_queries"
+                        )
+                        else ""
+                    )
+                ),
+
+                "cover_url": result.get(
+                    "cover_url",
+                    ""
+                ),
+
+                "google_books_id": result.get(
+                    "google_books_id"
+                ),
+
+                "score": result.get(
+                    "score",
+                    0
+                ),
+
+                "matched_words": result.get(
+                    "matched_words",
+                    []
+                ),
+            }
+        )
+
+    # ========================================================
+    # 16. DEBUG OUTPUT
+    # ========================================================
+
+    print(
+        "\nPAGE SEARCH RESULTS:"
+    )
+
+    if not final_results:
+
+        print(
+            " - No strong matches found."
+        )
+
+    else:
+
+        for result in final_results:
+
+            print(
+                f" - {result['title']} "
+                f"(score={result['score']}, "
+                f"matched={result['matched_words']})"
+            )
+
+            if result.get(
+                "snippet"
+            ):
+
+                print(
+                    f"   snippet: "
+                    f"{result['snippet']}"
+                )
+
+    return final_results
 
 # ============================================================
 # TEST OPENAI CONNECTION
