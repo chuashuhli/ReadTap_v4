@@ -4,7 +4,6 @@ import numpy as np
 import zxingcpp
 import requests
 
-from openai import OpenAI
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -19,24 +18,6 @@ from database import (
     finish_reading,
 )
 
-# ============================================================
-# OPENAI CLIENT
-# ============================================================
-
-openai_client = None
-
-try:
-    if "OPENAI_API_KEY" not in st.secrets:
-        st.error("OPENAI ERROR: OPENAI_API_KEY was not found in Streamlit Secrets.")
-    else:
-        openai_client = OpenAI(
-            api_key=st.secrets["OPENAI_API_KEY"]
-        )
-        st.success("OpenAI client initialised successfully.")
-
-except Exception as e:
-    openai_client = None
-    st.error(f"OPENAI INIT ERROR: {repr(e)}")
 
 # ============================================================
 # PAGE CONFIG
@@ -101,127 +82,6 @@ def is_valid_isbn13(isbn):
 def lookup_book_by_isbn(isbn):
     """
     Look up a book using its ISBN.
-def lookup_book_by_isbn(isbn):
-    """
-    Look up a book using its ISBN, trying several catalog routes and
-    ISBN formats. Barcode decoding remains separate from catalog lookup.
-    """
-    import re
-
-    scanned_isbn = re.sub(r"[^0-9Xx]", "", str(isbn or "")).upper()
-    if len(scanned_isbn) not in (10, 13):
-        return None
-
-    lookup_isbns = [scanned_isbn]
-
-    # A 978 ISBN-13 and its ISBN-10 identify the same book edition.
-    # Some catalogs index only one of the two forms.
-    if len(scanned_isbn) == 13 and scanned_isbn.startswith("978"):
-        core = scanned_isbn[3:12]
-        check = (11 - (sum(int(d) * (10 - i) for i, d in enumerate(core)) % 11)) % 11
-        isbn10 = core + ("X" if check == 10 else str(check))
-        lookup_isbns.append(isbn10)
-
-    def from_google_item(item):
-        info = item.get("volumeInfo", {})
-        title = str(info.get("title") or "").strip()
-        if not title:
-            return None
-        authors = info.get("authors") or []
-        identifiers = info.get("industryIdentifiers") or []
-        catalog_isbns = {
-            re.sub(r"[^0-9Xx]", "", str(identifier.get("identifier", ""))).upper()
-            for identifier in identifiers
-        }
-        return {
-            "isbn": scanned_isbn,
-            "title": title,
-            "author": ", ".join(str(author) for author in authors if author),
-            "_exact_isbn": bool(catalog_isbns.intersection(lookup_isbns)),
-        }
-
-    # Google Books direct ISBN query, using both ISBN-13 and ISBN-10 forms.
-    google_matches = []
-    for candidate_isbn in lookup_isbns:
-        try:
-            response = requests.get(
-                "https://www.googleapis.com/books/v1/volumes",
-                params={"q": f"isbn:{candidate_isbn}", "maxResults": 10},
-                timeout=10,
-            )
-            if response.status_code == 200:
-                for item in response.json().get("items", []):
-                    match = from_google_item(item)
-                    if match:
-                        google_matches.append(match)
-        except Exception:
-            continue
-
-    if google_matches:
-        selected = max(google_matches, key=lambda book: book["_exact_isbn"])
-        selected.pop("_exact_isbn", None)
-        return selected
-
-    # Open Library's edition lookup, first through its bibkeys API.
-    for candidate_isbn in lookup_isbns:
-        try:
-            response = requests.get(
-                "https://openlibrary.org/api/books",
-                params={
-                    "bibkeys": f"ISBN:{candidate_isbn}",
-                    "format": "json",
-                    "jscmd": "data",
-                },
-                timeout=10,
-            )
-            if response.status_code == 200:
-                book = response.json().get(f"ISBN:{candidate_isbn}", {})
-                title = str(book.get("title") or "").strip()
-                if title:
-                    authors = [
-                        str(author.get("name") or "").strip()
-                        for author in (book.get("authors") or [])
-                    ]
-                    return {
-                        "isbn": scanned_isbn,
-                        "title": title,
-                        "author": ", ".join(author for author in authors if author),
-                    }
-        except Exception:
-            continue
-
-    # Last fallback: Open Library search can find records whose ISBN index
-    # is incomplete even when its direct edition lookup misses them.
-    for candidate_isbn in lookup_isbns:
-        try:
-            response = requests.get(
-                "https://openlibrary.org/search.json",
-                params={"q": f"isbn:{candidate_isbn}", "limit": 10},
-                timeout=10,
-            )
-            if response.status_code != 200:
-                continue
-            docs = response.json().get("docs", [])
-            for doc in docs:
-                title = str(doc.get("title") or "").strip()
-                if not title:
-                    continue
-                doc_isbns = {
-                    re.sub(r"[^0-9Xx]", "", str(value)).upper()
-                    for value in (doc.get("isbn") or [])
-                }
-                if doc_isbns and not doc_isbns.intersection(lookup_isbns):
-                    continue
-                authors = doc.get("author_name") or []
-                return {
-                    "isbn": scanned_isbn,
-                    "title": title,
-                    "author": ", ".join(str(author) for author in authors[:2]),
-                }
-        except Exception:
-            continue
-
-    return None
 
     First tries Google Books.
     If that fails, tries Open Library.
@@ -487,7 +347,6 @@ def scan_isbn_from_image(image_file):
 # ============================================================
 
 def extract_text_from_image(image_file):
-def extract_text_from_image(image_file):
     """
     Extract text from an image using Google Cloud Vision.
 
@@ -579,253 +438,6 @@ def extract_text_from_image(image_file):
         )
 
         return ""
-
-
-def identify_book_from_image(image_file, ocr_text=""):
-    """Use the image layout as well as OCR to read title-page/cover clues.
-
-    Returns a conservative title/author guess. This is especially useful when
-    OCR returns the title and author in separate lines among lots of cover text.
-    """
-    if openai_client is None:
-        return {"title": "", "author": ""}
-
-    try:
-        import base64
-        import json
-
-        image_file.seek(0)
-        image_bytes = image_file.getvalue()
-        mime_type = getattr(image_file, "type", None) or "image/jpeg"
-        image_data = base64.b64encode(image_bytes).decode("ascii")
-
-        response = openai_client.responses.create(
-            model="gpt-4.1-mini",
-            input=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": (
-                            "Identify the most likely book from this photo. "
-                            "Read the visual hierarchy and layout: distinguish a book title "
-                            "and author from chapter headings, running text, publisher text, "
-                            "series labels, and page numbers. OCR text, if provided, may be "
-                            "noisy. Never invent a title. If no title or author is visible, "
-                            "return empty strings. Return only valid JSON with keys title "
-                            "and author.\nOCR text:\n" + str(ocr_text or "")[:5000]
-                        ),
-                    },
-                    {
-                        "type": "input_image",
-                        "image_url": f"data:{mime_type};base64,{image_data}",
-                    },
-                ],
-            }],
-        )
-
-        raw = (response.output_text or "").strip()
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start < 0 or end <= start:
-            return {"title": "", "author": ""}
-        parsed = json.loads(raw[start:end + 1])
-        return {
-            "title": str(parsed.get("title") or "").strip(),
-            "author": str(parsed.get("author") or "").strip(),
-        }
-    except Exception as e:
-        st.warning(f"Visual book-title reading failed; using OCR search instead. ({e})")
-        return {"title": "", "author": ""}
-
-
-def search_books_by_title(title, author="", limit=5):
-    """Search catalog APIs using the compact title/author clues from the photo."""
-    import re
-
-    title = re.sub(r"\s+", " ", str(title or "")).strip()
-    author = re.sub(r"\s+", " ", str(author or "")).strip()
-    if not title:
-        return []
-
-    queries = [f'intitle:"{title}"']
-    if author:
-        queries.insert(0, f'intitle:"{title}" inauthor:"{author}"')
-    results = []
-
-    for query in queries:
-        try:
-            response = requests.get(
-                "https://www.googleapis.com/books/v1/volumes",
-                params={"q": query, "maxResults": 10, "orderBy": "relevance", "printType": "books"},
-                timeout=10,
-            )
-            if response.status_code != 200:
-                continue
-            for item in response.json().get("items", []):
-                info = item.get("volumeInfo", {})
-                candidate_title = str(info.get("title") or "").strip()
-                if not candidate_title:
-                    continue
-                authors = info.get("authors") or []
-                identifiers = info.get("industryIdentifiers") or []
-                isbn = next((str(x.get("identifier", "")) for x in identifiers if x.get("type") == "ISBN_13"), "")
-                if not isbn:
-                    isbn = next((str(x.get("identifier", "")) for x in identifiers if x.get("type") == "ISBN_10"), "")
-                results.append({
-                    "title": candidate_title,
-                    "author": ", ".join(authors),
-                    "isbn": isbn,
-                    "cover_url": (info.get("imageLinks") or {}).get("thumbnail", ""),
-                    "source": "Google Books",
-                })
-        except Exception:
-            continue
-
-    wanted = re.sub(r"[^a-z0-9 ]", " ", title.lower())
-    wanted_words = set(wanted.split())
-    author_words = set(re.sub(r"[^a-z0-9 ]", " ", author.lower()).split())
-    for book in results:
-        found = re.sub(r"[^a-z0-9 ]", " ", book["title"].lower())
-        found_words = set(found.split())
-        author_found = set(re.sub(r"[^a-z0-9 ]", " ", book["author"].lower()).split())
-        book["_score"] = (
-            100 * len(wanted_words & found_words) / max(len(wanted_words), 1)
-            + 25 * len(author_words & author_found) / max(len(author_words), 1)
-            + (30 if wanted and wanted in found else 0)
-        )
-
-    unique = {}
-    for book in sorted(results, key=lambda row: row["_score"], reverse=True):
-        key = (book["title"].casefold(), book["author"].casefold())
-        if key not in unique:
-            book.pop("_score", None)
-            unique[key] = book
-    return list(unique.values())[:limit]
-        return ""
-
-
-def identify_book_from_image(image_file, ocr_text=""):
-    """Use the image layout as well as OCR to read title-page/cover clues.
-
-    Returns a conservative title/author guess. This is especially useful when
-    OCR returns the title and author in separate lines among lots of cover text.
-    """
-    if openai_client is None:
-        return {"title": "", "author": ""}
-
-    try:
-        import base64
-        import json
-
-        image_file.seek(0)
-        image_bytes = image_file.getvalue()
-        mime_type = getattr(image_file, "type", None) or "image/jpeg"
-        image_data = base64.b64encode(image_bytes).decode("ascii")
-
-        response = openai_client.responses.create(
-            model="gpt-4.1-mini",
-            input=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": (
-                            "Identify the most likely book from this photo. "
-                            "Read the visual hierarchy and layout: distinguish a book title "
-                            "and author from chapter headings, running text, publisher text, "
-                            "series labels, and page numbers. OCR text, if provided, may be "
-                            "noisy. Never invent a title. If no title or author is visible, "
-                            "return empty strings. Return only valid JSON with keys title "
-                            "and author.\nOCR text:\n" + str(ocr_text or "")[:5000]
-                        ),
-                    },
-                    {
-                        "type": "input_image",
-                        "image_url": f"data:{mime_type};base64,{image_data}",
-                    },
-                ],
-            }],
-        )
-
-        raw = (response.output_text or "").strip()
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start < 0 or end <= start:
-            return {"title": "", "author": ""}
-        parsed = json.loads(raw[start:end + 1])
-        return {
-            "title": str(parsed.get("title") or "").strip(),
-            "author": str(parsed.get("author") or "").strip(),
-        }
-    except Exception as e:
-        st.warning(f"Visual book-title reading failed; using OCR search instead. ({e})")
-        return {"title": "", "author": ""}
-
-
-def search_books_by_title(title, author="", limit=5):
-    """Search catalog APIs using the compact title/author clues from the photo."""
-    import re
-
-    title = re.sub(r"\s+", " ", str(title or "")).strip()
-    author = re.sub(r"\s+", " ", str(author or "")).strip()
-    if not title:
-        return []
-
-    queries = [f'intitle:"{title}"']
-    if author:
-        queries.insert(0, f'intitle:"{title}" inauthor:"{author}"')
-    results = []
-
-    for query in queries:
-        try:
-            response = requests.get(
-                "https://www.googleapis.com/books/v1/volumes",
-                params={"q": query, "maxResults": 10, "orderBy": "relevance", "printType": "books"},
-                timeout=10,
-            )
-            if response.status_code != 200:
-                continue
-            for item in response.json().get("items", []):
-                info = item.get("volumeInfo", {})
-                candidate_title = str(info.get("title") or "").strip()
-                if not candidate_title:
-                    continue
-                authors = info.get("authors") or []
-                identifiers = info.get("industryIdentifiers") or []
-                isbn = next((str(x.get("identifier", "")) for x in identifiers if x.get("type") == "ISBN_13"), "")
-                if not isbn:
-                    isbn = next((str(x.get("identifier", "")) for x in identifiers if x.get("type") == "ISBN_10"), "")
-                results.append({
-                    "title": candidate_title,
-                    "author": ", ".join(authors),
-                    "isbn": isbn,
-                    "cover_url": (info.get("imageLinks") or {}).get("thumbnail", ""),
-                    "source": "Google Books",
-                })
-        except Exception:
-            continue
-
-    wanted = re.sub(r"[^a-z0-9 ]", " ", title.lower())
-    wanted_words = set(wanted.split())
-    author_words = set(re.sub(r"[^a-z0-9 ]", " ", author.lower()).split())
-    for book in results:
-        found = re.sub(r"[^a-z0-9 ]", " ", book["title"].lower())
-        found_words = set(found.split())
-        author_found = set(re.sub(r"[^a-z0-9 ]", " ", book["author"].lower()).split())
-        book["_score"] = (
-            100 * len(wanted_words & found_words) / max(len(wanted_words), 1)
-            + 25 * len(author_words & author_found) / max(len(author_words), 1)
-            + (30 if wanted and wanted in found else 0)
-        )
-
-    unique = {}
-    for book in sorted(results, key=lambda row: row["_score"], reverse=True):
-        key = (book["title"].casefold(), book["author"].casefold())
-        if key not in unique:
-            book.pop("_score", None)
-            unique[key] = book
-    return list(unique.values())[:limit]
 
 
 # ============================================================
@@ -1504,1136 +1116,6 @@ def search_books_by_text(text, limit=5):
 
     return unique_results[:limit]
 
-def test_page_text_search(ocr_text):
-    """
-    Identify a book from OCR text captured from an inside page.
-
-    Strategy:
-    1. Clean OCR text.
-    2. Extract distinctive words and short phrases.
-    3. Search Google Books using several targeted queries.
-    4. Capture Google's textSnippet for each result.
-    5. Compare OCR text against:
-       - Google Books textSnippet
-       - title
-       - author
-       - description
-       - categories
-    6. Reward books returned by multiple search queries.
-    7. Rank candidates and return the strongest matches.
-
-    This function is designed specifically for INSIDE-PAGE scanning.
-    It does not change the existing cover-search function.
-    """
-
-    import re
-    import requests
-    from collections import Counter
-
-    # ========================================================
-    # 1. BASIC VALIDATION
-    # ========================================================
-
-    if not ocr_text or not str(ocr_text).strip():
-        return []
-
-    text = str(ocr_text).strip()
-
-    # ========================================================
-    # 2. NORMALISE OCR TEXT
-    # ========================================================
-
-    text_lower = text.lower()
-
-    # Fix a few common OCR mistakes.
-    ocr_corrections = {
-        "whimpy": "wimpy",
-        "wimpyy": "wimpy",
-        "kidss": "kids",
-        "diarry": "diary",
-        "journnal": "journal",
-        "jounal": "journal",
-    }
-
-    for wrong, correct in ocr_corrections.items():
-        text_lower = re.sub(
-            rf"\b{re.escape(wrong)}\b",
-            correct,
-            text_lower
-        )
-
-    # Extract normal words.
-    words = re.findall(
-        r"[a-zA-Z]{3,}",
-        text_lower
-    )
-
-    if not words:
-        return []
-
-    # ========================================================
-    # 3. STOPWORDS
-    # ========================================================
-
-    stopwords = {
-        "the",
-        "and",
-        "that",
-        "this",
-        "with",
-        "from",
-        "they",
-        "them",
-        "their",
-        "there",
-        "here",
-        "have",
-        "has",
-        "had",
-        "was",
-        "were",
-        "are",
-        "you",
-        "your",
-        "for",
-        "not",
-        "but",
-        "what",
-        "when",
-        "where",
-        "which",
-        "who",
-        "how",
-        "why",
-        "into",
-        "about",
-        "then",
-        "than",
-        "just",
-        "like",
-        "know",
-        "said",
-        "say",
-        "she",
-        "her",
-        "his",
-        "him",
-        "its",
-        "our",
-        "out",
-        "one",
-        "all",
-        "can",
-        "could",
-        "would",
-        "should",
-        "will",
-        "been",
-        "being",
-        "get",
-        "got",
-        "did",
-        "does",
-        "doing",
-        "mom",
-        "dad",
-        "today",
-        "first",
-        "time",
-        "went",
-        "going",
-        "come",
-        "came",
-        "back",
-        "really",
-        "thing",
-        "things",
-        "just",
-        "even",
-        "because",
-        "very",
-        "much",
-        "more",
-        "some",
-        "them",
-        "then",
-        "than",
-        "only",
-        "over",
-        "under",
-        "before",
-        "after",
-        "while",
-        "through",
-        "down",
-        "from",
-        "onto",
-        "also",
-        "still",
-        "made",
-        "make",
-        "know",
-        "think",
-        "thought",
-    }
-
-    # ========================================================
-    # 4. CREATE USEFUL WORD LIST
-    # ========================================================
-
-    useful_words = [
-        word
-        for word in words
-        if (
-            word not in stopwords
-            and len(word) >= 4
-        )
-    ]
-
-    # Preserve order while removing duplicates.
-    unique_words = list(
-        dict.fromkeys(useful_words)
-    )
-
-    if not unique_words:
-        return []
-
-    # ========================================================
-    # 5. IDENTIFY DISTINCTIVE WORDS
-    # ========================================================
-
-    # Words appearing only once are often more useful than
-    # extremely common words.
-    word_counts = Counter(words)
-
-    distinctive_words = [
-        word
-        for word in unique_words
-        if word_counts[word] == 1
-    ]
-
-    # Prefer longer distinctive words.
-    distinctive_words = sorted(
-        distinctive_words,
-        key=lambda x: len(x),
-        reverse=True
-    )
-
-    # ========================================================
-    # 6. BUILD SEARCH PHRASES
-    # ========================================================
-
-    queries = []
-
-    # --------------------------------------------------------
-    # A. Consecutive phrases from the ORIGINAL OCR
-    # --------------------------------------------------------
-
-    # Keep the original word order because book text is
-    # sequential. This is much better than simply taking
-    # the longest words from the entire page.
-    original_words = re.findall(
-        r"[a-zA-Z]{3,}",
-        text_lower
-    )
-
-    # Create short 5-word windows.
-    for i in range(
-        max(0, len(original_words) - 4)
-    ):
-        phrase_words = original_words[i:i + 5]
-
-        meaningful_count = sum(
-            1
-            for w in phrase_words
-            if w not in stopwords
-        )
-
-        if meaningful_count >= 2:
-            phrase = " ".join(
-                phrase_words
-            )
-
-            if phrase not in queries:
-                queries.append(phrase)
-
-    # --------------------------------------------------------
-    # B. Sentences from OCR
-    # --------------------------------------------------------
-
-    sentences = re.split(
-        r"[.!?\n]+",
-        text_lower
-    )
-
-    for sentence in sentences:
-
-        sentence_words = re.findall(
-            r"[a-zA-Z]{4,}",
-            sentence
-        )
-
-        if not sentence_words:
-            continue
-
-        # Remove generic words.
-        meaningful_sentence_words = [
-            w
-            for w in sentence_words
-            if w not in stopwords
-        ]
-
-        if len(meaningful_sentence_words) >= 3:
-
-            # Take a maximum of 6 words.
-            phrase = " ".join(
-                meaningful_sentence_words[:6]
-            )
-
-            if phrase not in queries:
-                queries.append(phrase)
-
-    # --------------------------------------------------------
-    # C. Distinctive word combinations
-    # --------------------------------------------------------
-
-    if len(distinctive_words) >= 3:
-
-        queries.append(
-            " ".join(
-                distinctive_words[:3]
-            )
-        )
-
-    if len(distinctive_words) >= 5:
-
-        queries.append(
-            " ".join(
-                distinctive_words[:5]
-            )
-        )
-
-    # --------------------------------------------------------
-    # D. Original first meaningful words
-    # --------------------------------------------------------
-
-    if len(unique_words) >= 4:
-
-        queries.append(
-            " ".join(
-                unique_words[:4]
-            )
-        )
-
-    if len(unique_words) >= 6:
-
-        queries.append(
-            " ".join(
-                unique_words[:6]
-            )
-        )
-
-    # ========================================================
-    # 7. CLEAN / DEDUPLICATE QUERIES
-    # ========================================================
-
-    cleaned_queries = []
-
-    seen_queries = set()
-
-    for query in queries:
-
-        query = re.sub(
-            r"\s+",
-            " ",
-            query
-        ).strip()
-
-        if not query:
-            continue
-
-        # Avoid extremely short queries.
-        if len(query.split()) < 3:
-            continue
-
-        key = query.lower()
-
-        if key in seen_queries:
-            continue
-
-        seen_queries.add(key)
-        cleaned_queries.append(query)
-
-    # Limit API calls.
-    # We want several different phrases, but not too many.
-    cleaned_queries = cleaned_queries[:10]
-
-    print("\nPAGE SEARCH QUERIES:")
-
-    for query in cleaned_queries:
-        print(" -", query)
-
-    if not cleaned_queries:
-        return []
-
-    # ========================================================
-    # 8. SEARCH GOOGLE BOOKS
-    # ========================================================
-
-    candidates = {}
-
-    for query in cleaned_queries:
-
-        try:
-
-            response = requests.get(
-                "https://www.googleapis.com/books/v1/volumes",
-                params={
-                    "q": query,
-                    "maxResults": 10,
-                    "orderBy": "relevance",
-                    "printType": "books",
-                },
-                timeout=10
-            )
-
-            if response.status_code != 200:
-                print(
-                    f"Google Books HTTP "
-                    f"{response.status_code} "
-                    f"for query: {query}"
-                )
-                continue
-
-            data = response.json()
-
-            items = data.get(
-                "items",
-                []
-            )
-
-            for item in items:
-
-                volume_info = item.get(
-                    "volumeInfo",
-                    {}
-                )
-
-                title = str(
-                    volume_info.get(
-                        "title",
-                        ""
-                    )
-                ).strip()
-
-                if not title:
-                    continue
-
-                authors = volume_info.get(
-                    "authors",
-                    []
-                )
-
-                if not isinstance(
-                    authors,
-                    list
-                ):
-                    authors = []
-
-                author = ", ".join(
-                    str(a)
-                    for a in authors
-                    if a
-                )
-
-                description = str(
-                    volume_info.get(
-                        "description",
-                        ""
-                    )
-                )
-
-                categories = volume_info.get(
-                    "categories",
-                    []
-                )
-
-                if not isinstance(
-                    categories,
-                    list
-                ):
-                    categories = []
-
-                # ------------------------------------------------
-                # IMPORTANT:
-                # Google Books provides textSnippet under
-                # searchInfo.
-                # ------------------------------------------------
-
-                search_info = item.get(
-                    "searchInfo",
-                    {}
-                )
-
-                snippet = str(
-                    search_info.get(
-                        "textSnippet",
-                        ""
-                    )
-                ).strip()
-
-                # Remove HTML tags sometimes present in snippets.
-                snippet_clean = re.sub(
-                    r"<[^>]+>",
-                    " ",
-                    snippet
-                )
-
-                snippet_clean = re.sub(
-                    r"\s+",
-                    " ",
-                    snippet_clean
-                ).strip()
-
-                metadata = " ".join([
-                    title,
-                    author,
-                    description,
-                    " ".join(categories),
-                ]).lower()
-
-                book_id = item.get(
-                    "id"
-                )
-
-                if not book_id:
-                    book_id = (
-                        title.lower()
-                        + "|"
-                        + author.lower()
-                    )
-
-                if book_id not in candidates:
-
-                    candidates[book_id] = {
-                        "title": title,
-                        "author": author,
-                        "description": description,
-                        "categories": categories,
-                        "metadata": metadata,
-                        "snippet": snippet_clean,
-                        "cover_url": (
-                            volume_info
-                            .get(
-                                "imageLinks",
-                                {}
-                            )
-                            .get(
-                                "thumbnail",
-                                ""
-                            )
-                        ),
-                        "google_books_id": (
-                            item.get("id")
-                        ),
-                        "query_hits": 1,
-                        "matched_queries": [
-                            query
-                        ],
-                    }
-
-                else:
-
-                    candidate = candidates[
-                        book_id
-                    ]
-
-                    candidate[
-                        "query_hits"
-                    ] += 1
-
-                    candidate[
-                        "matched_queries"
-                    ].append(query)
-
-                    # Keep a useful snippet if the first
-                    # result did not contain one.
-                    if (
-                        not candidate.get(
-                            "snippet"
-                        )
-                        and snippet_clean
-                    ):
-                        candidate[
-                            "snippet"
-                        ] = snippet_clean
-
-        except Exception as e:
-
-            print(
-                "Google Books search error "
-                f"for '{query}': {e}"
-            )
-
-            continue
-
-    # ========================================================
-    # 9. NO GOOGLE RESULTS
-    # ========================================================
-
-    if not candidates:
-
-        print(
-            "\nPAGE SEARCH RESULTS: "
-            "No Google Books candidates."
-        )
-
-        return []
-
-    # ========================================================
-    # 10. NORMALISE TEXT FOR MATCHING
-    # ========================================================
-
-    def normalise_for_matching(value):
-
-        value = str(
-            value or ""
-        ).lower()
-
-        value = re.sub(
-            r"<[^>]+>",
-            " ",
-            value
-        )
-
-        value = re.sub(
-            r"[^a-z0-9\s]",
-            " ",
-            value
-        )
-
-        value = re.sub(
-            r"\s+",
-            " ",
-            value
-        )
-
-        return value.strip()
-
-    ocr_normalised = normalise_for_matching(
-        text_lower
-    )
-
-    ocr_words = set(
-        w
-        for w in re.findall(
-            r"[a-z]{4,}",
-            ocr_normalised
-        )
-        if w not in stopwords
-    )
-
-    # ========================================================
-    # 11. CREATE OCR PHRASES FOR MATCHING
-    # ========================================================
-
-    ocr_phrases = []
-
-    # Use consecutive 4-word phrases.
-    ocr_word_list = re.findall(
-        r"[a-z]{3,}",
-        ocr_normalised
-    )
-
-    for i in range(
-        max(0, len(ocr_word_list) - 3)
-    ):
-
-        phrase_words = ocr_word_list[
-            i:i + 4
-        ]
-
-        meaningful = [
-            w
-            for w in phrase_words
-            if w not in stopwords
-        ]
-
-        if len(meaningful) >= 2:
-
-            phrase = " ".join(
-                phrase_words
-            )
-
-            ocr_phrases.append(
-                phrase
-            )
-
-    # Remove duplicate phrases.
-    ocr_phrases = list(
-        dict.fromkeys(
-            ocr_phrases
-        )
-    )
-
-    # ========================================================
-    # 12. SCORE CANDIDATES
-    # ========================================================
-
-    results = []
-
-    for candidate in candidates.values():
-
-        title = normalise_for_matching(
-            candidate.get(
-                "title",
-                ""
-            )
-        )
-
-        author = normalise_for_matching(
-            candidate.get(
-                "author",
-                ""
-            )
-        )
-
-        description = normalise_for_matching(
-            candidate.get(
-                "description",
-                ""
-            )
-        )
-
-        categories = normalise_for_matching(
-            " ".join(
-                candidate.get(
-                    "categories",
-                    []
-                )
-            )
-        )
-
-        snippet = normalise_for_matching(
-            candidate.get(
-                "snippet",
-                ""
-            )
-        )
-
-        metadata = " ".join([
-            title,
-            author,
-            description,
-            categories,
-        ])
-
-        metadata_words = set(
-            re.findall(
-                r"[a-z]{4,}",
-                metadata
-            )
-        )
-
-        snippet_words = set(
-            re.findall(
-                r"[a-z]{4,}",
-                snippet
-            )
-        )
-
-        score = 0
-
-        matched_words = []
-
-        # ----------------------------------------------------
-        # A. WORD MATCHES IN GOOGLE TEXT SNIPPET
-        # ----------------------------------------------------
-
-        snippet_matches = (
-            ocr_words.intersection(
-                snippet_words
-            )
-        )
-
-        if snippet_matches:
-
-            score += (
-                len(snippet_matches) * 8
-            )
-
-            matched_words.extend(
-                snippet_matches
-            )
-
-        # ----------------------------------------------------
-        # B. WORD MATCHES IN METADATA
-        # ----------------------------------------------------
-
-        metadata_matches = (
-            ocr_words.intersection(
-                metadata_words
-            )
-        )
-
-        if metadata_matches:
-
-            score += (
-                len(metadata_matches) * 2
-            )
-
-            matched_words.extend(
-                metadata_matches
-            )
-
-        # ----------------------------------------------------
-        # C. EXACT PHRASE MATCH IN SNIPPET
-        # ----------------------------------------------------
-
-        phrase_matches = []
-
-        for phrase in ocr_phrases:
-
-            if (
-                phrase
-                and phrase in snippet
-            ):
-
-                phrase_matches.append(
-                    phrase
-                )
-
-                # Strong evidence.
-                score += 25
-
-        # ----------------------------------------------------
-        # D. PARTIAL PHRASE MATCH
-        # ----------------------------------------------------
-
-        for phrase in ocr_phrases:
-
-            phrase_words = [
-                w
-                for w in phrase.split()
-                if w not in stopwords
-            ]
-
-            if len(phrase_words) < 2:
-                continue
-
-            matched_count = sum(
-                1
-                for w in phrase_words
-                if w in snippet_words
-            )
-
-            # At least 2 words from a phrase
-            # appearing in the snippet is useful.
-            if matched_count >= 2:
-
-                score += (
-                    matched_count * 5
-                )
-
-        # ----------------------------------------------------
-        # E. TITLE MATCH
-        # ----------------------------------------------------
-
-        title_matches = (
-            ocr_words.intersection(
-                set(
-                    re.findall(
-                        r"[a-z]{4,}",
-                        title
-                    )
-                )
-            )
-        )
-
-        if title_matches:
-
-            # Title matches are highly valuable,
-            # because these are actual book-title words.
-            score += (
-                len(title_matches) * 12
-            )
-
-            matched_words.extend(
-                title_matches
-            )
-
-        # ----------------------------------------------------
-        # F. AUTHOR MATCH
-        # ----------------------------------------------------
-
-        author_words = set(
-            re.findall(
-                r"[a-z]{4,}",
-                author
-            )
-        )
-
-        author_matches = (
-            ocr_words.intersection(
-                author_words
-            )
-        )
-
-        if author_matches:
-
-            score += (
-                len(author_matches) * 10
-            )
-
-            matched_words.extend(
-                author_matches
-            )
-
-        # ----------------------------------------------------
-        # G. MULTIPLE QUERY HITS
-        # ----------------------------------------------------
-
-        query_hits = int(
-            candidate.get(
-                "query_hits",
-                1
-            )
-        )
-
-        if query_hits >= 2:
-
-            score += (
-                (query_hits - 1) * 8
-            )
-
-        # ----------------------------------------------------
-        # H. DISTINCTIVE WORDS
-        # ----------------------------------------------------
-
-        distinctive_matches = (
-            set(distinctive_words)
-            .intersection(
-                snippet_words
-            )
-        )
-
-        if distinctive_matches:
-
-            score += (
-                len(distinctive_matches)
-                * 10
-            )
-
-            matched_words.extend(
-                distinctive_matches
-            )
-
-        # Remove duplicates.
-        matched_words = list(
-            dict.fromkeys(
-                matched_words
-            )
-        )
-
-        candidate["score"] = score
-
-        candidate[
-            "matched_words"
-        ] = matched_words
-
-        candidate[
-            "phrase_matches"
-        ] = phrase_matches
-
-        results.append(
-            candidate
-        )
-
-    # ========================================================
-    # 13. SORT RESULTS
-    # ========================================================
-
-    results.sort(
-        key=lambda x: x.get(
-            "score",
-            0
-        ),
-        reverse=True
-    )
-
-    # ========================================================
-    # 14. REMOVE WEAK / RANDOM RESULTS
-    # ========================================================
-
-    # Require stronger evidence for inside-page matches.
-    #
-    # A result can qualify if:
-    # - it has a reasonably strong score, OR
-    # - Google returned a snippet containing an OCR phrase.
-    #
-    strong_results = []
-
-    for result in results:
-
-        score = result.get(
-            "score",
-            0
-        )
-
-        snippet = result.get(
-            "snippet",
-            ""
-        )
-
-        phrase_matches = result.get(
-            "phrase_matches",
-            []
-        )
-
-        if (
-            score >= 12
-            or (
-                snippet
-                and phrase_matches
-            )
-        ):
-
-            strong_results.append(
-                result
-            )
-
-    # Maximum 5 candidates.
-    strong_results = (
-        strong_results[:5]
-    )
-
-    # ========================================================
-    # 15. CONVERT TO THE FORMAT USED BY YOUR UI
-    # ========================================================
-
-    final_results = []
-
-    for result in strong_results:
-
-        final_results.append(
-            {
-                "title": result.get(
-                    "title",
-                    "Unknown title"
-                ),
-
-                "author": result.get(
-                    "author",
-                    ""
-                ),
-
-                "snippet": result.get(
-                    "snippet",
-                    ""
-                ),
-
-                "phrase": (
-                    result.get(
-                        "phrase_matches",
-                        []
-                    )[0]
-                    if result.get(
-                        "phrase_matches",
-                        []
-                    )
-                    else (
-                        result.get(
-                            "matched_queries",
-                            [""]
-                        )[0]
-                        if result.get(
-                            "matched_queries"
-                        )
-                        else ""
-                    )
-                ),
-
-                "cover_url": result.get(
-                    "cover_url",
-                    ""
-                ),
-
-                "google_books_id": result.get(
-                    "google_books_id"
-                ),
-
-                "score": result.get(
-                    "score",
-                    0
-                ),
-
-                "matched_words": result.get(
-                    "matched_words",
-                    []
-                ),
-            }
-        )
-
-    # ========================================================
-    # 16. DEBUG OUTPUT
-    # ========================================================
-
-    print(
-        "\nPAGE SEARCH RESULTS:"
-    )
-
-    if not final_results:
-
-        print(
-            " - No strong matches found."
-        )
-
-    else:
-
-        for result in final_results:
-
-            print(
-                f" - {result['title']} "
-                f"(score={result['score']}, "
-                f"matched={result['matched_words']})"
-            )
-
-            if result.get(
-                "snippet"
-            ):
-
-                print(
-                    f"   snippet: "
-                    f"{result['snippet']}"
-                )
-
-    return final_results
-
-# ============================================================
-# TEST OPENAI CONNECTION
-# ============================================================
-
-def test_openai_connection():
-    """
-    Tests whether ReadTap can communicate with OpenAI.
-    """
-
-    if openai_client is None:
-        return False, "OpenAI client was not initialised."
-
-    try:
-        response = openai_client.responses.create(
-            model="gpt-4.1-mini",
-            input="Reply with exactly: ReadTap connection successful"
-        )
-
-        result = response.output_text.strip()
-
-        return True, result
-
-    except Exception as e:
-        return False, f"OpenAI connection failed: {str(e)}"
-
 
 # ============================================================
 # CUSTOM CSS
@@ -2931,12 +1413,7 @@ defaults = {
     "scanning_page": False,
     "book_candidates": [],
     "ocr_text": "",
-    "book_clues": {"title": "", "author": ""},
 }
-    "book_candidates": [],
-    "ocr_text": "",
-    "book_clues": {"title": "", "author": ""},
-
 
 for key, value in defaults.items():
 
@@ -3445,7 +1922,6 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "← Back",
-            key="back_from_isbn",
             use_container_width=True,
         ):
 
@@ -3470,10 +1946,8 @@ elif st.session_state.awaiting_confirmation:
         )
 
         st.info(
-            "📕 ReadTap will read the cover and use its layout "
-            "to separate the title and author from other text."
-            "📕 ReadTap will read the cover and use its layout "
-            "to separate the title and author from other text."
+            "📕 ReadTap will use Google Cloud Vision "
+            "to read the text on the cover."
         )
 
         cover_image = st.camera_input(
@@ -3500,31 +1974,13 @@ elif st.session_state.awaiting_confirmation:
                     "✅ Text detected on the book cover!"
                 )
 
-                # ------------------------------------------------
-                # SEARCH FOR POSSIBLE BOOKS
-                # ------------------------------------------------
-
                 with st.spinner(
-                    "📚 Searching for matching books..."
+                    "📚 Searching for your book..."
                 ):
-                    book_clues = identify_book_from_image(
-                        cover_image, detected_text
+
+                    candidates = search_books_by_text(
+                        detected_text
                     )
-                    st.session_state.book_clues = book_clues
-                    candidates = search_books_by_title(
-                        book_clues.get("title"), book_clues.get("author")
-                    ) if book_clues.get("title") else []
-                    if not candidates:
-                        candidates = search_books_by_text(detected_text)
-                    book_clues = identify_book_from_image(
-                        cover_image, detected_text
-                    )
-                    st.session_state.book_clues = book_clues
-                    candidates = search_books_by_title(
-                        book_clues.get("title"), book_clues.get("author")
-                    ) if book_clues.get("title") else []
-                    if not candidates:
-                        candidates = search_books_by_text(detected_text)
 
                 if candidates:
 
@@ -3545,7 +2001,6 @@ elif st.session_state.awaiting_confirmation:
                         "Text detected by ReadTap",
                         detected_text,
                         height=150,
-                        key="cover_detected_text",
                     )
 
                     st.info(
@@ -3566,7 +2021,6 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "← Back",
-            key="back_from_cover",
             use_container_width=True,
         ):
 
@@ -3592,10 +2046,8 @@ elif st.session_state.awaiting_confirmation:
         )
 
         st.info(
-            "📄 ReadTap will read the page and look for visible "
-            "title or author clues before searching."
-            "📄 ReadTap will read the page and look for visible "
-            "title or author clues before searching."
+            "📄 ReadTap will use Google Cloud Vision "
+            "to read the text on the page."
         )
 
         page_image = st.camera_input(
@@ -3622,147 +2074,39 @@ elif st.session_state.awaiting_confirmation:
                     "✅ Text detected on the page!"
                 )
 
-                with st.spinner("📚 Identifying the book from the page..."):
-                    book_clues = identify_book_from_image(page_image, detected_text)
-                    st.session_state.book_clues = book_clues
-                    candidates = search_books_by_title(
-                        book_clues.get("title"), book_clues.get("author")
-                    ) if book_clues.get("title") else []
+                with st.spinner(
+                    "📚 Searching for your book..."
+                ):
 
-                    # A normal page may not show a title. Fall back to matching
-                    # distinctive passage text against Google Books snippets.
-                    if not candidates:
-                        page_matches = test_page_text_search(detected_text)
-                        candidates = [
-                            {
-                                "title": match.get("title", ""),
-                                "author": match.get("author", ""),
-                                "isbn": "",
-                                "cover_url": match.get("cover_url", ""),
-                                "source": "Google Books page-text match",
-                            }
-                            for match in page_matches
-                            if isinstance(match, dict)
-                        ]
-
-                if candidates:
-                    st.session_state.book_candidates = candidates[:5]
-                    st.session_state.scanning_page = False
-                    st.session_state.scanning_cover = False
-                    st.rerun()
-                else:
-                    if book_clues.get("title"):
-                        guessed_title = book_clues["title"]
-                        guessed_author = book_clues.get("author", "")
-                        st.info(
-                            "ReadTap thinks this may be the book. Confirm the title "
-                            "to continue, or scan again if it isn't correct."
-                        )
-                        st.markdown(
-                            f"**{guessed_title}**"
-                            + (f"  \n✍️ {guessed_author}" if guessed_author else "")
-                        )
-                        if st.button(
-                            "✅ Yes, this is the correct book",
-                            key="confirm_visual_title_guess",
-                            use_container_width=True,
-                        ):
-                            st.session_state.scanned_book = {
-                                "title": guessed_title,
-                                "author": guessed_author,
-                                "isbn": "",
-                                "cover_url": "",
-                                "source": "Visual title guess",
-                            }
-                            st.session_state.book_candidates = []
-                            st.session_state.scanning_page = False
-                            st.session_state.scanning_cover = False
-                            st.session_state.scanning_isbn = False
-                            st.rerun()
-                        st.caption(
-                            "If this isn't right, scan the cover or ISBN, or try a title/copyright page."
-                        )
-                    else:
-                        st.warning(
-                            "I found text, but couldn't identify a book. "
-                            "Try a title/copyright page, the cover, or scan the ISBN."
-                        )
-                    st.text_area(
-                        "Text detected by ReadTap",
-                        detected_text,
-                        height=150,
-                        key="page_detected_text",
+                    candidates = search_books_by_text(
+                        detected_text
                     )
-                with st.spinner("📚 Identifying the book from the page..."):
-                    book_clues = identify_book_from_image(page_image, detected_text)
-                    st.session_state.book_clues = book_clues
-                    candidates = search_books_by_title(
-                        book_clues.get("title"), book_clues.get("author")
-                    ) if book_clues.get("title") else []
-
-                    # A normal page may not show a title. Fall back to matching
-                    # distinctive passage text against Google Books snippets.
-                    if not candidates:
-                        page_matches = test_page_text_search(detected_text)
-                        candidates = [
-                            {
-                                "title": match.get("title", ""),
-                                "author": match.get("author", ""),
-                                "isbn": "",
-                                "cover_url": match.get("cover_url", ""),
-                                "source": "Google Books page-text match",
-                            }
-                            for match in page_matches
-                            if isinstance(match, dict)
-                        ]
 
                 if candidates:
-                    st.session_state.book_candidates = candidates[:5]
+
+                    st.session_state.book_candidates = candidates
                     st.session_state.scanning_page = False
                     st.session_state.scanning_cover = False
+
                     st.rerun()
+
                 else:
-                    if book_clues.get("title"):
-                        guessed_title = book_clues["title"]
-                        guessed_author = book_clues.get("author", "")
-                        st.info(
-                            "ReadTap thinks this may be the book. Confirm the title "
-                            "to continue, or scan again if it isn't correct."
-                        )
-                        st.markdown(
-                            f"**{guessed_title}**"
-                            + (f"  \n✍️ {guessed_author}" if guessed_author else "")
-                        )
-                        if st.button(
-                            "✅ Yes, this is the correct book",
-                            key="confirm_visual_title_guess",
-                            use_container_width=True,
-                        ):
-                            st.session_state.scanned_book = {
-                                "title": guessed_title,
-                                "author": guessed_author,
-                                "isbn": "",
-                                "cover_url": "",
-                                "source": "Visual title guess",
-                            }
-                            st.session_state.book_candidates = []
-                            st.session_state.scanning_page = False
-                            st.session_state.scanning_cover = False
-                            st.session_state.scanning_isbn = False
-                            st.rerun()
-                        st.caption(
-                            "If this isn't right, scan the cover or ISBN, or try a title/copyright page."
-                        )
-                    else:
-                        st.warning(
-                            "I found text, but couldn't identify a book. "
-                            "Try a title/copyright page, the cover, or scan the ISBN."
-                        )
+
+                    st.warning(
+                        "I found text on the page, "
+                        "but couldn't match it to a book."
+                    )
+
                     st.text_area(
                         "Text detected by ReadTap",
                         detected_text,
                         height=150,
-                        key="page_detected_text",
+                    )
+
+                    st.info(
+                        "Try another page containing "
+                        "the book title, author, or other "
+                        "identifying information."
                     )
 
             else:
@@ -3778,7 +2122,6 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "← Back",
-            key="back_from_page",
             use_container_width=True,
         ):
 
@@ -3797,27 +2140,6 @@ elif st.session_state.awaiting_confirmation:
         st.markdown(
             "### 📚 Possible Books"
         )
-
-        book_clues = st.session_state.get("book_clues", {})
-        if book_clues.get("title"):
-            clue_text = "Visual title guess: " + book_clues["title"]
-            if book_clues.get("author"):
-                clue_text += " — " + book_clues["author"]
-            st.caption(clue_text)
-
-        st.caption(
-    elif st.session_state.book_candidates:
-
-        st.markdown(
-            "### 📚 Possible Books"
-        )
-
-        book_clues = st.session_state.get("book_clues", {})
-        if book_clues.get("title"):
-            clue_text = "Visual title guess: " + book_clues["title"]
-            if book_clues.get("author"):
-                clue_text += " — " + book_clues["author"]
-            st.caption(clue_text)
 
         st.caption(
             "ReadTap found these possible matches. "
@@ -3933,7 +2255,6 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "🔄 Scan Again",
-            key="scan_again_book_found",
             use_container_width=True,
         ):
 
@@ -3949,7 +2270,6 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "✏️ Enter Title Manually",
-            key="manual_entry_book_found",
             use_container_width=True,
         ):
 
@@ -4071,7 +2391,6 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "🔄 Scan Again",
-            key="scan_again_candidates",
             use_container_width=True,
         ):
 
@@ -4091,7 +2410,6 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "✏️ Enter Title Manually",
-            key="manual_entry_candidates",
             use_container_width=True,
         ):
 
@@ -4319,18 +2637,6 @@ elif st.session_state.awaiting_confirmation:
                     st.session_state.show_summary = True
 
                     st.rerun()
-
-# ============================================================
-# TEMPORARY OPENAI CONNECTION TEST
-# ============================================================
-
-if st.button("🔌 Test OpenAI Connection"):
-    success, message = test_openai_connection()
-
-    if success:
-        st.success(message)
-    else:
-        st.error(message)
 
 
 # ============================================================
@@ -4614,5 +2920,4 @@ else:
                 ),
             }
 
-            st.rerun()
             st.rerun()
