@@ -2936,7 +2936,7 @@ defaults = {
     "book_candidates": [],
     "ocr_text": "",
     "book_clues": {"title": "", "author": ""},
-}
+
 
 for key, value in defaults.items():
 
