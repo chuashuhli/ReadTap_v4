@@ -98,141 +98,103 @@ def is_valid_isbn13(isbn):
 # LOOK UP BOOK USING ISBN
 # ============================================================
 
-def lookup_book_by_isbn(isbn):
-    """
-    Look up a book using its ISBN.
+        info = item.get("volumeInfo", {})
+        title = str(info.get("title") or "").strip()
+        if not title:
+            return None
+        authors = info.get("authors") or []
+        identifiers = info.get("industryIdentifiers") or []
+        catalog_isbns = {
+            re.sub(r"[^0-9Xx]", "", str(identifier.get("identifier", ""))).upper()
+            for identifier in identifiers
+        }
+        return {
+            "isbn": scanned_isbn,
+            "title": title,
+            "author": ", ".join(str(author) for author in authors if author),
+            "_exact_isbn": bool(catalog_isbns.intersection(lookup_isbns)),
+        }
 
-    First tries Google Books.
-    If that fails, tries Open Library.
-    """
-
-    isbn = (
-        str(isbn)
-        .replace("-", "")
-        .replace(" ", "")
-        .strip()
-    )
-
-    # --------------------------------------------------------
-    # GOOGLE BOOKS
-    # --------------------------------------------------------
-
-    try:
-        url = (
-            "https://www.googleapis.com/books/v1/volumes"
-            f"?q=isbn:{isbn}"
-        )
-
-        response = requests.get(
-            url,
-            timeout=10,
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-
-            items = data.get(
-                "items",
-                []
+    # Google Books direct ISBN query, using both ISBN-13 and ISBN-10 forms.
+    google_matches = []
+    for candidate_isbn in lookup_isbns:
+        try:
+            response = requests.get(
+                "https://www.googleapis.com/books/v1/volumes",
+                params={"q": f"isbn:{candidate_isbn}", "maxResults": 10},
+                timeout=10,
             )
+            if response.status_code == 200:
+                for item in response.json().get("items", []):
+                    match = from_google_item(item)
+                    if match:
+                        google_matches.append(match)
+        except Exception:
+            continue
 
-            if items:
-                volume_info = items[0].get(
-                    "volumeInfo",
-                    {}
-                )
+    if google_matches:
+        selected = max(google_matches, key=lambda book: book["_exact_isbn"])
+        selected.pop("_exact_isbn", None)
+        return selected
 
-                title = str(
-                    volume_info.get(
-                        "title",
-                        ""
-                    )
-                ).strip()
-
-                authors = volume_info.get(
-                    "authors",
-                    []
-                )
-
-                author = (
-                    ", ".join(authors)
-                    if authors
-                    else ""
-                )
-
-                if title:
-                    return {
-                        "isbn": isbn,
-                        "title": title,
-                        "author": author,
-                    }
-
-    except Exception:
-        pass
-
-
-    # --------------------------------------------------------
-    # OPEN LIBRARY FALLBACK
-    # --------------------------------------------------------
-
-    try:
-        url = (
-            "https://openlibrary.org/api/books"
-            f"?bibkeys=ISBN:{isbn}"
-            "&format=json"
-            "&jscmd=data"
-        )
-
-        response = requests.get(
-            url,
-            timeout=10,
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-
-            book = data.get(
-                f"ISBN:{isbn}"
+    # Open Library's edition lookup, first through its bibkeys API.
+    for candidate_isbn in lookup_isbns:
+        try:
+            response = requests.get(
+                "https://openlibrary.org/api/books",
+                params={
+                    "bibkeys": f"ISBN:{candidate_isbn}",
+                    "format": "json",
+                    "jscmd": "data",
+                },
+                timeout=10,
             )
-
-            if book:
-                title = str(
-                    book.get(
-                        "title",
-                        ""
-                    )
-                ).strip()
-
-                authors_data = book.get(
-                    "authors",
-                    []
-                )
-
-                authors = []
-
-                for author_data in authors_data:
-                    name = str(
-                        author_data.get(
-                            "name",
-                            ""
-                        )
-                    ).strip()
-
-                    if name:
-                        authors.append(name)
-
-                author = ", ".join(authors)
-
+            if response.status_code == 200:
+                book = response.json().get(f"ISBN:{candidate_isbn}", {})
+                title = str(book.get("title") or "").strip()
                 if title:
+                    authors = [
+                        str(author.get("name") or "").strip()
+                        for author in (book.get("authors") or [])
+                    ]
                     return {
-                        "isbn": isbn,
+                        "isbn": scanned_isbn,
                         "title": title,
-                        "author": author,
+                        "author": ", ".join(author for author in authors if author),
                     }
+        except Exception:
+            continue
 
-    except Exception:
-        pass
-
+    # Last fallback: Open Library search can find records whose ISBN index
+    # is incomplete even when its direct edition lookup misses them.
+    for candidate_isbn in lookup_isbns:
+        try:
+            response = requests.get(
+                "https://openlibrary.org/search.json",
+                params={"q": f"isbn:{candidate_isbn}", "limit": 10},
+                timeout=10,
+            )
+            if response.status_code != 200:
+                continue
+            docs = response.json().get("docs", [])
+            for doc in docs:
+                title = str(doc.get("title") or "").strip()
+                if not title:
+                    continue
+                doc_isbns = {
+                    re.sub(r"[^0-9Xx]", "", str(value)).upper()
+                    for value in (doc.get("isbn") or [])
+                }
+                if doc_isbns and not doc_isbns.intersection(lookup_isbns):
+                    continue
+                authors = doc.get("author_name") or []
+                return {
+                    "isbn": scanned_isbn,
+                    "title": title,
+                    "author": ", ".join(str(author) for author in authors[:2]),
+                }
+        except Exception:
+            continue
 
     return None
 
