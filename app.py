@@ -98,6 +98,31 @@ def is_valid_isbn13(isbn):
 # LOOK UP BOOK USING ISBN
 # ============================================================
 
+def lookup_book_by_isbn(isbn):
+    """
+    Look up a book using its ISBN.
+def lookup_book_by_isbn(isbn):
+    """
+    Look up a book using its ISBN, trying several catalog routes and
+    ISBN formats. Barcode decoding remains separate from catalog lookup.
+    """
+    import re
+
+    scanned_isbn = re.sub(r"[^0-9Xx]", "", str(isbn or "")).upper()
+    if len(scanned_isbn) not in (10, 13):
+        return None
+
+    lookup_isbns = [scanned_isbn]
+
+    # A 978 ISBN-13 and its ISBN-10 identify the same book edition.
+    # Some catalogs index only one of the two forms.
+    if len(scanned_isbn) == 13 and scanned_isbn.startswith("978"):
+        core = scanned_isbn[3:12]
+        check = (11 - (sum(int(d) * (10 - i) for i, d in enumerate(core)) % 11)) % 11
+        isbn10 = core + ("X" if check == 10 else str(check))
+        lookup_isbns.append(isbn10)
+
+    def from_google_item(item):
         info = item.get("volumeInfo", {})
         title = str(info.get("title") or "").strip()
         if not title:
@@ -195,6 +220,140 @@ def is_valid_isbn13(isbn):
                 }
         except Exception:
             continue
+
+    return None
+
+    First tries Google Books.
+    If that fails, tries Open Library.
+    """
+
+    isbn = (
+        str(isbn)
+        .replace("-", "")
+        .replace(" ", "")
+        .strip()
+    )
+
+    # --------------------------------------------------------
+    # GOOGLE BOOKS
+    # --------------------------------------------------------
+
+    try:
+        url = (
+            "https://www.googleapis.com/books/v1/volumes"
+            f"?q=isbn:{isbn}"
+        )
+
+        response = requests.get(
+            url,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+
+            items = data.get(
+                "items",
+                []
+            )
+
+            if items:
+                volume_info = items[0].get(
+                    "volumeInfo",
+                    {}
+                )
+
+                title = str(
+                    volume_info.get(
+                        "title",
+                        ""
+                    )
+                ).strip()
+
+                authors = volume_info.get(
+                    "authors",
+                    []
+                )
+
+                author = (
+                    ", ".join(authors)
+                    if authors
+                    else ""
+                )
+
+                if title:
+                    return {
+                        "isbn": isbn,
+                        "title": title,
+                        "author": author,
+                    }
+
+    except Exception:
+        pass
+
+
+    # --------------------------------------------------------
+    # OPEN LIBRARY FALLBACK
+    # --------------------------------------------------------
+
+    try:
+        url = (
+            "https://openlibrary.org/api/books"
+            f"?bibkeys=ISBN:{isbn}"
+            "&format=json"
+            "&jscmd=data"
+        )
+
+        response = requests.get(
+            url,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+
+            book = data.get(
+                f"ISBN:{isbn}"
+            )
+
+            if book:
+                title = str(
+                    book.get(
+                        "title",
+                        ""
+                    )
+                ).strip()
+
+                authors_data = book.get(
+                    "authors",
+                    []
+                )
+
+                authors = []
+
+                for author_data in authors_data:
+                    name = str(
+                        author_data.get(
+                            "name",
+                            ""
+                        )
+                    ).strip()
+
+                    if name:
+                        authors.append(name)
+
+                author = ", ".join(authors)
+
+                if title:
+                    return {
+                        "isbn": isbn,
+                        "title": title,
+                        "author": author,
+                    }
+
+    except Exception:
+        pass
+
 
     return None
 
@@ -328,6 +487,7 @@ def scan_isbn_from_image(image_file):
 # ============================================================
 
 def extract_text_from_image(image_file):
+def extract_text_from_image(image_file):
     """
     Extract text from an image using Google Cloud Vision.
 
@@ -418,6 +578,130 @@ def extract_text_from_image(image_file):
             f"OCR error: {e}"
         )
 
+        return ""
+
+
+def identify_book_from_image(image_file, ocr_text=""):
+    """Use the image layout as well as OCR to read title-page/cover clues.
+
+    Returns a conservative title/author guess. This is especially useful when
+    OCR returns the title and author in separate lines among lots of cover text.
+    """
+    if openai_client is None:
+        return {"title": "", "author": ""}
+
+    try:
+        import base64
+        import json
+
+        image_file.seek(0)
+        image_bytes = image_file.getvalue()
+        mime_type = getattr(image_file, "type", None) or "image/jpeg"
+        image_data = base64.b64encode(image_bytes).decode("ascii")
+
+        response = openai_client.responses.create(
+            model="gpt-4.1-mini",
+            input=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "Identify the most likely book from this photo. "
+                            "Read the visual hierarchy and layout: distinguish a book title "
+                            "and author from chapter headings, running text, publisher text, "
+                            "series labels, and page numbers. OCR text, if provided, may be "
+                            "noisy. Never invent a title. If no title or author is visible, "
+                            "return empty strings. Return only valid JSON with keys title "
+                            "and author.\nOCR text:\n" + str(ocr_text or "")[:5000]
+                        ),
+                    },
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:{mime_type};base64,{image_data}",
+                    },
+                ],
+            }],
+        )
+
+        raw = (response.output_text or "").strip()
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start < 0 or end <= start:
+            return {"title": "", "author": ""}
+        parsed = json.loads(raw[start:end + 1])
+        return {
+            "title": str(parsed.get("title") or "").strip(),
+            "author": str(parsed.get("author") or "").strip(),
+        }
+    except Exception as e:
+        st.warning(f"Visual book-title reading failed; using OCR search instead. ({e})")
+        return {"title": "", "author": ""}
+
+
+def search_books_by_title(title, author="", limit=5):
+    """Search catalog APIs using the compact title/author clues from the photo."""
+    import re
+
+    title = re.sub(r"\s+", " ", str(title or "")).strip()
+    author = re.sub(r"\s+", " ", str(author or "")).strip()
+    if not title:
+        return []
+
+    queries = [f'intitle:"{title}"']
+    if author:
+        queries.insert(0, f'intitle:"{title}" inauthor:"{author}"')
+    results = []
+
+    for query in queries:
+        try:
+            response = requests.get(
+                "https://www.googleapis.com/books/v1/volumes",
+                params={"q": query, "maxResults": 10, "orderBy": "relevance", "printType": "books"},
+                timeout=10,
+            )
+            if response.status_code != 200:
+                continue
+            for item in response.json().get("items", []):
+                info = item.get("volumeInfo", {})
+                candidate_title = str(info.get("title") or "").strip()
+                if not candidate_title:
+                    continue
+                authors = info.get("authors") or []
+                identifiers = info.get("industryIdentifiers") or []
+                isbn = next((str(x.get("identifier", "")) for x in identifiers if x.get("type") == "ISBN_13"), "")
+                if not isbn:
+                    isbn = next((str(x.get("identifier", "")) for x in identifiers if x.get("type") == "ISBN_10"), "")
+                results.append({
+                    "title": candidate_title,
+                    "author": ", ".join(authors),
+                    "isbn": isbn,
+                    "cover_url": (info.get("imageLinks") or {}).get("thumbnail", ""),
+                    "source": "Google Books",
+                })
+        except Exception:
+            continue
+
+    wanted = re.sub(r"[^a-z0-9 ]", " ", title.lower())
+    wanted_words = set(wanted.split())
+    author_words = set(re.sub(r"[^a-z0-9 ]", " ", author.lower()).split())
+    for book in results:
+        found = re.sub(r"[^a-z0-9 ]", " ", book["title"].lower())
+        found_words = set(found.split())
+        author_found = set(re.sub(r"[^a-z0-9 ]", " ", book["author"].lower()).split())
+        book["_score"] = (
+            100 * len(wanted_words & found_words) / max(len(wanted_words), 1)
+            + 25 * len(author_words & author_found) / max(len(author_words), 1)
+            + (30 if wanted and wanted in found else 0)
+        )
+
+    unique = {}
+    for book in sorted(results, key=lambda row: row["_score"], reverse=True):
+        key = (book["title"].casefold(), book["author"].casefold())
+        if key not in unique:
+            book.pop("_score", None)
+            unique[key] = book
+    return list(unique.values())[:limit]
         return ""
 
 
@@ -2649,6 +2933,10 @@ defaults = {
     "ocr_text": "",
     "book_clues": {"title": "", "author": ""},
 }
+    "book_candidates": [],
+    "ocr_text": "",
+    "book_clues": {"title": "", "author": ""},
+}
 
 for key, value in defaults.items():
 
@@ -3184,6 +3472,8 @@ elif st.session_state.awaiting_confirmation:
         st.info(
             "📕 ReadTap will read the cover and use its layout "
             "to separate the title and author from other text."
+            "📕 ReadTap will read the cover and use its layout "
+            "to separate the title and author from other text."
         )
 
         cover_image = st.camera_input(
@@ -3217,6 +3507,15 @@ elif st.session_state.awaiting_confirmation:
                 with st.spinner(
                     "📚 Searching for matching books..."
                 ):
+                    book_clues = identify_book_from_image(
+                        cover_image, detected_text
+                    )
+                    st.session_state.book_clues = book_clues
+                    candidates = search_books_by_title(
+                        book_clues.get("title"), book_clues.get("author")
+                    ) if book_clues.get("title") else []
+                    if not candidates:
+                        candidates = search_books_by_text(detected_text)
                     book_clues = identify_book_from_image(
                         cover_image, detected_text
                     )
@@ -3293,6 +3592,8 @@ elif st.session_state.awaiting_confirmation:
         )
 
         st.info(
+            "📄 ReadTap will read the page and look for visible "
+            "title or author clues before searching."
             "📄 ReadTap will read the page and look for visible "
             "title or author clues before searching."
         )
@@ -3392,6 +3693,77 @@ elif st.session_state.awaiting_confirmation:
                         height=150,
                         key="page_detected_text",
                     )
+                with st.spinner("📚 Identifying the book from the page..."):
+                    book_clues = identify_book_from_image(page_image, detected_text)
+                    st.session_state.book_clues = book_clues
+                    candidates = search_books_by_title(
+                        book_clues.get("title"), book_clues.get("author")
+                    ) if book_clues.get("title") else []
+
+                    # A normal page may not show a title. Fall back to matching
+                    # distinctive passage text against Google Books snippets.
+                    if not candidates:
+                        page_matches = test_page_text_search(detected_text)
+                        candidates = [
+                            {
+                                "title": match.get("title", ""),
+                                "author": match.get("author", ""),
+                                "isbn": "",
+                                "cover_url": match.get("cover_url", ""),
+                                "source": "Google Books page-text match",
+                            }
+                            for match in page_matches
+                            if isinstance(match, dict)
+                        ]
+
+                if candidates:
+                    st.session_state.book_candidates = candidates[:5]
+                    st.session_state.scanning_page = False
+                    st.session_state.scanning_cover = False
+                    st.rerun()
+                else:
+                    if book_clues.get("title"):
+                        guessed_title = book_clues["title"]
+                        guessed_author = book_clues.get("author", "")
+                        st.info(
+                            "ReadTap thinks this may be the book. Confirm the title "
+                            "to continue, or scan again if it isn't correct."
+                        )
+                        st.markdown(
+                            f"**{guessed_title}**"
+                            + (f"  \n✍️ {guessed_author}" if guessed_author else "")
+                        )
+                        if st.button(
+                            "✅ Yes, this is the correct book",
+                            key="confirm_visual_title_guess",
+                            use_container_width=True,
+                        ):
+                            st.session_state.scanned_book = {
+                                "title": guessed_title,
+                                "author": guessed_author,
+                                "isbn": "",
+                                "cover_url": "",
+                                "source": "Visual title guess",
+                            }
+                            st.session_state.book_candidates = []
+                            st.session_state.scanning_page = False
+                            st.session_state.scanning_cover = False
+                            st.session_state.scanning_isbn = False
+                            st.rerun()
+                        st.caption(
+                            "If this isn't right, scan the cover or ISBN, or try a title/copyright page."
+                        )
+                    else:
+                        st.warning(
+                            "I found text, but couldn't identify a book. "
+                            "Try a title/copyright page, the cover, or scan the ISBN."
+                        )
+                    st.text_area(
+                        "Text detected by ReadTap",
+                        detected_text,
+                        height=150,
+                        key="page_detected_text",
+                    )
 
             else:
 
@@ -3420,6 +3792,20 @@ elif st.session_state.awaiting_confirmation:
     # BOOK CANDIDATES FROM OCR
     # ========================================================
 
+    elif st.session_state.book_candidates:
+
+        st.markdown(
+            "### 📚 Possible Books"
+        )
+
+        book_clues = st.session_state.get("book_clues", {})
+        if book_clues.get("title"):
+            clue_text = "Visual title guess: " + book_clues["title"]
+            if book_clues.get("author"):
+                clue_text += " — " + book_clues["author"]
+            st.caption(clue_text)
+
+        st.caption(
     elif st.session_state.book_candidates:
 
         st.markdown(
@@ -4228,4 +4614,5 @@ else:
                 ),
             }
 
+            st.rerun()
             st.rerun()
