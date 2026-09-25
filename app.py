@@ -3388,14 +3388,41 @@ elif st.session_state.awaiting_confirmation:
                     st.session_state.scanning_cover = False
                     st.rerun()
                 else:
-                    st.warning(
-                        "I found text, but couldn't identify a strong book match. "
-                        "Try a title/copyright page, the cover, or scan the ISBN."
-                    )
                     if book_clues.get("title"):
+                        guessed_title = book_clues["title"]
+                        guessed_author = book_clues.get("author", "")
+                        st.info(
+                            "ReadTap thinks this may be the book. Confirm the title "
+                            "to continue, or scan again if it isn't correct."
+                        )
+                        st.markdown(
+                            f"**{guessed_title}**"
+                            + (f"  \n✍️ {guessed_author}" if guessed_author else "")
+                        )
+                        if st.button(
+                            "✅ Yes, this is the correct book",
+                            key="confirm_visual_title_guess",
+                            use_container_width=True,
+                        ):
+                            st.session_state.scanned_book = {
+                                "title": guessed_title,
+                                "author": guessed_author,
+                                "isbn": "",
+                                "cover_url": "",
+                                "source": "Visual title guess",
+                            }
+                            st.session_state.book_candidates = []
+                            st.session_state.scanning_page = False
+                            st.session_state.scanning_cover = False
+                            st.session_state.scanning_isbn = False
+                            st.rerun()
                         st.caption(
-                            "Visual title guess: " + book_clues["title"]
-                            + (" — " + book_clues["author"] if book_clues.get("author") else "")
+                            "If this isn't right, scan the cover or ISBN, or try a title/copyright page."
+                        )
+                    else:
+                        st.warning(
+                            "I found text, but couldn't identify a book. "
+                            "Try a title/copyright page, the cover, or scan the ISBN."
                         )
                     st.text_area(
                         "Text detected by ReadTap",
