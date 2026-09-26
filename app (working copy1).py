@@ -223,74 +223,122 @@ def lookup_book_by_isbn(isbn):
 # ============================================================
 
 def scan_isbn_from_image(image_file):
-    """Find and validate ISBN-13 barcodes in a camera image.
-
-    Scans the full image and likely barcode regions with several restrained
-    image adjustments. If multiple valid codes are found, prefers the code
-    detected consistently across independent image variants.
     """
-    try:
-        from collections import Counter
-        from PIL import ImageOps
+    Scan an image for an EAN-13 / ISBN-13 barcode.
 
-        image = ImageOps.exif_transpose(
-            Image.open(image_file)
+    Tries several versions of the image to improve
+    detection reliability.
+    """
+
+    try:
+        # ----------------------------------------------------
+        # OPEN IMAGE
+        # ----------------------------------------------------
+
+        image = Image.open(
+            image_file
         ).convert("RGB")
 
-        width, height = image.size
-        regions = [image]
 
-        # ISBN barcodes are commonly near the bottom of the back cover.
-        # Overlapping crops exclude unrelated graphics and nearby text.
-        if width > 1 and height > 1:
-            regions.extend([
-                image.crop((0, int(height * 0.35), width, height)),
-                image.crop((0, int(height * 0.55), width, height)),
-                image.crop((int(width * 0.10), int(height * 0.35),
-                            int(width * 0.90), height)),
-            ])
+        # ----------------------------------------------------
+        # CREATE IMAGE VERSIONS
+        # ----------------------------------------------------
 
-        candidates = Counter()
-        for region in regions:
-            # Enlarge small inputs while avoiding huge arrays from phone photos.
-            scale = min(2.0, 1800 / max(region.size))
-            if scale > 1.05:
-                region = region.resize(
-                    (max(1, int(region.width * scale)),
-                     max(1, int(region.height * scale))),
-                    Image.Resampling.LANCZOS,
+        images_to_try = []
+
+        # Original
+        images_to_try.append(image)
+
+
+        # Enlarged
+        scale = 2
+
+        enlarged = image.resize(
+            (
+                image.width * scale,
+                image.height * scale,
+            )
+        )
+
+        images_to_try.append(enlarged)
+
+
+        # Grayscale
+        gray = enlarged.convert("L")
+
+        images_to_try.append(gray)
+
+
+        # High contrast
+        contrast = ImageEnhance.Contrast(
+            gray
+        ).enhance(2.0)
+
+        images_to_try.append(contrast)
+
+
+        # Sharpen
+        sharp = ImageEnhance.Sharpness(
+            contrast
+        ).enhance(2.0)
+
+        images_to_try.append(sharp)
+
+
+        # ----------------------------------------------------
+        # TRY EACH IMAGE VERSION
+        # ----------------------------------------------------
+
+        for test_image in images_to_try:
+
+            image_array = np.array(
+                test_image
+            )
+
+            barcodes = zxingcpp.read_barcodes(
+                image_array,
+                try_rotate=True,
+                try_downscale=False,
+                try_invert=True,
+            )
+
+
+            # ------------------------------------------------
+            # CHECK DETECTED BARCODES
+            # ------------------------------------------------
+
+            for barcode in barcodes:
+
+                raw = str(
+                    barcode.text or ""
+                ).strip()
+
+                isbn = (
+                    raw
+                    .replace("-", "")
+                    .replace(" ", "")
                 )
 
-            gray = region.convert("L")
-            variants = [
-                gray,
-                ImageEnhance.Contrast(gray).enhance(1.8),
-                ImageEnhance.Sharpness(gray).enhance(2.0),
-                gray.point(lambda px: 255 if px > 150 else 0),
-            ]
+                if (
+                    len(isbn) == 13
+                    and isbn.isdigit()
+                    and isbn.startswith(
+                        ("978", "979")
+                    )
+                    and is_valid_isbn13(isbn)
+                ):
+                    return isbn
 
-            for variant in variants:
-                barcodes = zxingcpp.read_barcodes(
-                    np.array(variant),
-                    try_rotate=True,
-                    try_downscale=True,
-                    try_invert=True,
-                )
-                for barcode in barcodes:
-                    raw = str(barcode.text or "").strip()
-                    isbn = raw.replace("-", "").replace(" ", "")
-                    if is_valid_isbn13(isbn):
-                        candidates[isbn] += 1
-
-        if candidates:
-            # Repeated detections across variants are more reliable than
-            # returning whichever valid code happened to be found first.
-            return candidates.most_common(1)[0][0]
 
         return None
 
+
     except Exception as e:
-        st.error(f"Barcode scanner error: {e}")
+
+        st.error(
+            f"Barcode scanner error: {e}"
+        )
+
         return None
 
 
