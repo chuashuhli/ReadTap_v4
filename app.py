@@ -223,37 +223,34 @@ def lookup_book_by_isbn(isbn):
 # ============================================================
 
 def scan_isbn_from_image(image_file):
-    """Find and validate ISBN-13 barcodes in a camera image.
-
-    Scans the full image and likely barcode regions with several restrained
-    image adjustments. If multiple valid codes are found, prefers the code
-    detected consistently across independent image variants.
-    """
+    """Find and validate ISBN-13 barcodes in a camera image."""
     try:
         from collections import Counter
-        from PIL import ImageOps
+        from PIL import ImageFilter, ImageOps
 
         image = ImageOps.exif_transpose(
             Image.open(image_file)
         ).convert("RGB")
-
         width, height = image.size
         regions = [image]
 
-        # ISBN barcodes are commonly near the bottom of the back cover.
-        # Overlapping crops exclude unrelated graphics and nearby text.
+        # Include overlapping lower-cover and centered label crops. ISBN
+        # labels are commonly placed in this area, and cropping limits cover
+        # art and surrounding text competing with a small, soft barcode.
         if width > 1 and height > 1:
             regions.extend([
-                image.crop((0, int(height * 0.35), width, height)),
-                image.crop((0, int(height * 0.55), width, height)),
-                image.crop((int(width * 0.10), int(height * 0.35),
-                            int(width * 0.90), height)),
+                image.crop((0, int(height * 0.30), width, height)),
+                image.crop((0, int(height * 0.48), width, height)),
+                image.crop((int(width * 0.15), int(height * 0.30),
+                            int(width * 0.85), int(height * 0.90))),
+                image.crop((int(width * 0.20), int(height * 0.38),
+                            int(width * 0.80), int(height * 0.82))),
             ])
 
         candidates = Counter()
         for region in regions:
-            # Enlarge small inputs while avoiding huge arrays from phone photos.
-            scale = min(2.0, 1800 / max(region.size))
+            # Upscale the barcode before decoding while keeping memory bounded.
+            scale = min(2.5, 2200 / max(region.size))
             if scale > 1.05:
                 region = region.resize(
                     (max(1, int(region.width * scale)),
@@ -262,12 +259,28 @@ def scan_isbn_from_image(image_file):
                 )
 
             gray = region.convert("L")
+            normalized = ImageOps.autocontrast(gray, cutoff=1)
+            equalized = ImageOps.equalize(normalized)
             variants = [
                 gray,
-                ImageEnhance.Contrast(gray).enhance(1.8),
-                ImageEnhance.Sharpness(gray).enhance(2.0),
-                gray.point(lambda px: 255 if px > 150 else 0),
+                normalized,
+                equalized,
+                normalized.filter(ImageFilter.UnsharpMask(
+                    radius=2, percent=180, threshold=3
+                )),
+                equalized.filter(ImageFilter.UnsharpMask(
+                    radius=2, percent=180, threshold=3
+                )),
             ]
+
+            # Test several thresholds to handle color casts and uneven light.
+            variants.extend(
+                normalized.point(
+                    lambda px, threshold=threshold:
+                        255 if px > threshold else 0
+                )
+                for threshold in (110, 140, 170, 200)
+            )
 
             for variant in variants:
                 barcodes = zxingcpp.read_barcodes(
@@ -283,10 +296,7 @@ def scan_isbn_from_image(image_file):
                         candidates[isbn] += 1
 
         if candidates:
-            # Repeated detections across variants are more reliable than
-            # returning whichever valid code happened to be found first.
             return candidates.most_common(1)[0][0]
-
         return None
 
     except Exception as e:
