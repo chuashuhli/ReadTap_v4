@@ -1006,6 +1006,7 @@ def search_books_by_text(text, limit=5):
                     )
 
 
+```python
                 # ------------------------------------------------
                 # ISBN
                 # ------------------------------------------------
@@ -1021,33 +1022,33 @@ def search_books_by_text(text, limit=5):
                 for isbn_value in isbn_list:
 
                     isbn_value = str(
-        isbn_value
-    ).replace("-", "").replace(" ", "").strip()
+                        isbn_value
+                    ).replace("-", "").replace(" ", "").strip()
 
-                if len(isbn_value) == 13 and isbn_value.isdigit():
+                    if len(isbn_value) == 13 and isbn_value.isdigit():
 
-        if isbn_value.startswith(
-            ("978", "979")
-        ):
+                        if isbn_value.startswith(
+                            ("978", "979")
+                        ):
 
-            isbn = isbn_value
-            break
+                            isbn = isbn_value
+                            break
 
-        # If no ISBN-13 is available,
-        # use a valid ISBN-10.
-        if not isbn:
+                # If no ISBN-13 is available,
+                # use a valid ISBN-10.
+                if not isbn:
 
-            for isbn_value in isbn_list:
+                    for isbn_value in isbn_list:
 
-                isbn_value = str(
-                    isbn_value
-                ).replace("-", "").replace(" ", "").strip()
+                        isbn_value = str(
+                            isbn_value
+                        ).replace("-", "").replace(" ", "").strip()
 
-                if len(isbn_value) == 10:
+                        if len(isbn_value) == 10:
 
-                    isbn = isbn_value
-                    break
-                    
+                            isbn = isbn_value
+                            break
+
                 results.append(
                     {
                         "title": title,
