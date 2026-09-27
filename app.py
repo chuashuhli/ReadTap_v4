@@ -75,186 +75,126 @@ def is_valid_isbn13(isbn):
     return total % 10 == 0
 
 
-# ============================================================
-# LOOK UP BOOK USING ISBN
-# ============================================================
-
 def lookup_book_by_isbn(isbn):
     """
-    Look up a book using its ISBN.
+    Look up a book using ISBN.
 
     Step 1:
+    - Normalize the ISBN
     - Search Google Books
-    - Examine multiple results
-    - Prefer an exact ISBN match
-    - Fall back to a result with useful metadata
+    - Check ALL returned results for an exact ISBN match
+    - Fall back to the first usable Google Books result
+    - Then try Open Library
     """
 
-    isbn = (
-        str(isbn)
-        .replace("-", "")
-        .replace(" ", "")
-        .strip()
-    )
+    # ------------------------------------------------
+    # 1. NORMALIZE ISBN
+    # ------------------------------------------------
+
+    isbn = str(isbn).replace("-", "").replace(" ", "").strip()
 
     if not isbn:
         return None
 
-    # --------------------------------------------------------
-    # GOOGLE BOOKS
-    # --------------------------------------------------------
+    # ------------------------------------------------
+    # 2. GOOGLE BOOKS
+    # ------------------------------------------------
 
     try:
-
-        url = (
-            "https://www.googleapis.com/books/v1/volumes"
-        )
-
         response = requests.get(
-            url,
+            "https://www.googleapis.com/books/v1/volumes",
             params={
                 "q": f"isbn:{isbn}",
-                "maxResults": 10,
+                "maxResults": 10
             },
-            timeout=10,
+            timeout=10
         )
 
         if response.status_code == 200:
-
             data = response.json()
+            items = data.get("items", [])
 
-            items = data.get(
-                "items",
-                []
-            )
-
-            # ------------------------------------------------
-            # FIRST PASS:
-            # Look for an EXACT ISBN match
-            # ------------------------------------------------
+            # --------------------------------------------
+            # First: look for an EXACT ISBN match
+            # --------------------------------------------
 
             for item in items:
-
-                volume_info = item.get(
-                    "volumeInfo",
-                    {}
-                )
+                volume_info = item.get("volumeInfo", {})
 
                 identifiers = volume_info.get(
                     "industryIdentifiers",
                     []
                 )
 
-                isbn_matches = []
-
                 for identifier in identifiers:
 
                     identifier_value = str(
-                        identifier.get(
-                            "identifier",
-                            ""
-                        )
-                    ).replace(
-                        "-",
-                        ""
-                    ).replace(
-                        " ",
-                        ""
-                    ).strip()
+                        identifier.get("identifier", "")
+                    ).replace("-", "").replace(" ", "").strip()
 
-                    if identifier_value:
-                        isbn_matches.append(
-                            identifier_value
+                    if identifier_value == isbn:
+
+                        title = str(
+                            volume_info.get("title", "")
+                        ).strip()
+
+                        authors = volume_info.get(
+                            "authors",
+                            []
                         )
 
-                # Exact ISBN match
-                if isbn in isbn_matches:
+                        author = ", ".join(authors) if authors else ""
 
-                    title = str(
-                        volume_info.get(
-                            "title",
-                            ""
-                        )
-                    ).strip()
+                        if title:
+                            return {
+                                "isbn": isbn,
+                                "title": title,
+                                "author": author
+                            }
+
+            # --------------------------------------------
+            # Second: if exact ISBN wasn't found,
+            # use the first usable Google Books result
+            # --------------------------------------------
+
+            for item in items:
+                volume_info = item.get("volumeInfo", {})
+
+                title = str(
+                    volume_info.get("title", "")
+                ).strip()
+
+                if title:
 
                     authors = volume_info.get(
                         "authors",
                         []
                     )
 
-                    author = (
-                        ", ".join(authors)
-                        if authors
-                        else ""
-                    )
-
-                    if title:
-
-                        return {
-                            "isbn": isbn,
-                            "title": title,
-                            "author": author,
-                        }
-
-            # ------------------------------------------------
-            # SECOND PASS:
-            # If no exact ISBN match was found,
-            # use the first result that has a title.
-            # ------------------------------------------------
-
-            for item in items:
-
-                volume_info = item.get(
-                    "volumeInfo",
-                    {}
-                )
-
-                title = str(
-                    volume_info.get(
-                        "title",
-                        ""
-                    )
-                ).strip()
-
-                authors = volume_info.get(
-                    "authors",
-                    []
-                )
-
-                author = (
-                    ", ".join(authors)
-                    if authors
-                    else ""
-                )
-
-                if title:
+                    author = ", ".join(authors) if authors else ""
 
                     return {
                         "isbn": isbn,
                         "title": title,
-                        "author": author,
+                        "author": author
                     }
 
     except Exception:
         pass
 
-
-    # --------------------------------------------------------
-    # OPEN LIBRARY FALLBACK
-    # --------------------------------------------------------
+    # ------------------------------------------------
+    # 3. OPEN LIBRARY FALLBACK
+    # ------------------------------------------------
 
     try:
-
-        url = (
-            "https://openlibrary.org/api/books"
-            f"?bibkeys=ISBN:{isbn}"
-            "&format=json"
-            "&jscmd=data"
-        )
-
         response = requests.get(
-            url,
-            timeout=10,
+            "https://openlibrary.org/api/books",
+            params={
+                "bibkeys": f"ISBN:{isbn}",
+                "format": "json",
+                "jscmd": "data"
+            },
+            timeout=10
         )
 
         if response.status_code == 200:
@@ -268,10 +208,7 @@ def lookup_book_by_isbn(isbn):
             if book:
 
                 title = str(
-                    book.get(
-                        "title",
-                        ""
-                    )
+                    book.get("title", "")
                 ).strip()
 
                 authors_data = book.get(
@@ -283,29 +220,28 @@ def lookup_book_by_isbn(isbn):
 
                 for author_data in authors_data:
 
-                    name = str(
-                        author_data.get(
-                            "name",
-                            ""
-                        )
+                    author_name = str(
+                        author_data.get("name", "")
                     ).strip()
 
-                    if name:
-                        authors.append(name)
+                    if author_name:
+                        authors.append(author_name)
 
                 author = ", ".join(authors)
 
                 if title:
-
                     return {
                         "isbn": isbn,
                         "title": title,
-                        "author": author,
+                        "author": author
                     }
 
     except Exception:
         pass
 
+    # ------------------------------------------------
+    # 4. NOTHING FOUND
+    # ------------------------------------------------
 
     return None
 
