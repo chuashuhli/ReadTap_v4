@@ -83,8 +83,11 @@ def lookup_book_by_isbn(isbn):
     """
     Look up a book using its ISBN.
 
-    First tries Google Books.
-    If that fails, tries Open Library.
+    Step 1:
+    - Search Google Books
+    - Examine multiple results
+    - Prefer an exact ISBN match
+    - Fall back to a result with useful metadata
     """
 
     isbn = (
@@ -94,22 +97,30 @@ def lookup_book_by_isbn(isbn):
         .strip()
     )
 
+    if not isbn:
+        return None
+
     # --------------------------------------------------------
     # GOOGLE BOOKS
     # --------------------------------------------------------
 
     try:
+
         url = (
             "https://www.googleapis.com/books/v1/volumes"
-            f"?q=isbn:{isbn}"
         )
 
         response = requests.get(
             url,
+            params={
+                "q": f"isbn:{isbn}",
+                "maxResults": 10,
+            },
             timeout=10,
         )
 
         if response.status_code == 200:
+
             data = response.json()
 
             items = data.get(
@@ -117,8 +128,83 @@ def lookup_book_by_isbn(isbn):
                 []
             )
 
-            if items:
-                volume_info = items[0].get(
+            # ------------------------------------------------
+            # FIRST PASS:
+            # Look for an EXACT ISBN match
+            # ------------------------------------------------
+
+            for item in items:
+
+                volume_info = item.get(
+                    "volumeInfo",
+                    {}
+                )
+
+                identifiers = volume_info.get(
+                    "industryIdentifiers",
+                    []
+                )
+
+                isbn_matches = []
+
+                for identifier in identifiers:
+
+                    identifier_value = str(
+                        identifier.get(
+                            "identifier",
+                            ""
+                        )
+                    ).replace(
+                        "-",
+                        ""
+                    ).replace(
+                        " ",
+                        ""
+                    ).strip()
+
+                    if identifier_value:
+                        isbn_matches.append(
+                            identifier_value
+                        )
+
+                # Exact ISBN match
+                if isbn in isbn_matches:
+
+                    title = str(
+                        volume_info.get(
+                            "title",
+                            ""
+                        )
+                    ).strip()
+
+                    authors = volume_info.get(
+                        "authors",
+                        []
+                    )
+
+                    author = (
+                        ", ".join(authors)
+                        if authors
+                        else ""
+                    )
+
+                    if title:
+
+                        return {
+                            "isbn": isbn,
+                            "title": title,
+                            "author": author,
+                        }
+
+            # ------------------------------------------------
+            # SECOND PASS:
+            # If no exact ISBN match was found,
+            # use the first result that has a title.
+            # ------------------------------------------------
+
+            for item in items:
+
+                volume_info = item.get(
                     "volumeInfo",
                     {}
                 )
@@ -142,6 +228,7 @@ def lookup_book_by_isbn(isbn):
                 )
 
                 if title:
+
                     return {
                         "isbn": isbn,
                         "title": title,
@@ -157,6 +244,7 @@ def lookup_book_by_isbn(isbn):
     # --------------------------------------------------------
 
     try:
+
         url = (
             "https://openlibrary.org/api/books"
             f"?bibkeys=ISBN:{isbn}"
@@ -170,6 +258,7 @@ def lookup_book_by_isbn(isbn):
         )
 
         if response.status_code == 200:
+
             data = response.json()
 
             book = data.get(
@@ -177,6 +266,7 @@ def lookup_book_by_isbn(isbn):
             )
 
             if book:
+
                 title = str(
                     book.get(
                         "title",
@@ -192,6 +282,7 @@ def lookup_book_by_isbn(isbn):
                 authors = []
 
                 for author_data in authors_data:
+
                     name = str(
                         author_data.get(
                             "name",
@@ -205,6 +296,7 @@ def lookup_book_by_isbn(isbn):
                 author = ", ".join(authors)
 
                 if title:
+
                     return {
                         "isbn": isbn,
                         "title": title,
@@ -217,90 +309,127 @@ def lookup_book_by_isbn(isbn):
 
     return None
 
-
 # ============================================================
 # SCAN ISBN BARCODE FROM IMAGE
 # ============================================================
 
 def scan_isbn_from_image(image_file):
-    """Find and validate ISBN-13 barcodes in a camera image."""
+    """
+    Scan an image for an EAN-13 / ISBN-13 barcode.
+
+    Tries several versions of the image to improve
+    detection reliability.
+    """
+
     try:
-        from collections import Counter
-        from PIL import ImageFilter, ImageOps
+        # ----------------------------------------------------
+        # OPEN IMAGE
+        # ----------------------------------------------------
 
-        image = ImageOps.exif_transpose(
-            Image.open(image_file)
+        image = Image.open(
+            image_file
         ).convert("RGB")
-        width, height = image.size
-        regions = [image]
 
-        # Include overlapping lower-cover and centered label crops. ISBN
-        # labels are commonly placed in this area, and cropping limits cover
-        # art and surrounding text competing with a small, soft barcode.
-        if width > 1 and height > 1:
-            regions.extend([
-                image.crop((0, int(height * 0.30), width, height)),
-                image.crop((0, int(height * 0.48), width, height)),
-                image.crop((int(width * 0.15), int(height * 0.30),
-                            int(width * 0.85), int(height * 0.90))),
-                image.crop((int(width * 0.20), int(height * 0.38),
-                            int(width * 0.80), int(height * 0.82))),
-            ])
 
-        candidates = Counter()
-        for region in regions:
-            # Upscale the barcode before decoding while keeping memory bounded.
-            scale = min(2.5, 2200 / max(region.size))
-            if scale > 1.05:
-                region = region.resize(
-                    (max(1, int(region.width * scale)),
-                     max(1, int(region.height * scale))),
-                    Image.Resampling.LANCZOS,
-                )
+        # ----------------------------------------------------
+        # CREATE IMAGE VERSIONS
+        # ----------------------------------------------------
 
-            gray = region.convert("L")
-            normalized = ImageOps.autocontrast(gray, cutoff=1)
-            equalized = ImageOps.equalize(normalized)
-            variants = [
-                gray,
-                normalized,
-                equalized,
-                normalized.filter(ImageFilter.UnsharpMask(
-                    radius=2, percent=180, threshold=3
-                )),
-                equalized.filter(ImageFilter.UnsharpMask(
-                    radius=2, percent=180, threshold=3
-                )),
-            ]
+        images_to_try = []
 
-            # Test several thresholds to handle color casts and uneven light.
-            variants.extend(
-                normalized.point(
-                    lambda px, threshold=threshold:
-                        255 if px > threshold else 0
-                )
-                for threshold in (110, 140, 170, 200)
+        # Original
+        images_to_try.append(image)
+
+
+        # Enlarged
+        scale = 2
+
+        enlarged = image.resize(
+            (
+                image.width * scale,
+                image.height * scale,
+            )
+        )
+
+        images_to_try.append(enlarged)
+
+
+        # Grayscale
+        gray = enlarged.convert("L")
+
+        images_to_try.append(gray)
+
+
+        # High contrast
+        contrast = ImageEnhance.Contrast(
+            gray
+        ).enhance(2.0)
+
+        images_to_try.append(contrast)
+
+
+        # Sharpen
+        sharp = ImageEnhance.Sharpness(
+            contrast
+        ).enhance(2.0)
+
+        images_to_try.append(sharp)
+
+
+        # ----------------------------------------------------
+        # TRY EACH IMAGE VERSION
+        # ----------------------------------------------------
+
+        for test_image in images_to_try:
+
+            image_array = np.array(
+                test_image
             )
 
-            for variant in variants:
-                barcodes = zxingcpp.read_barcodes(
-                    np.array(variant),
-                    try_rotate=True,
-                    try_downscale=True,
-                    try_invert=True,
-                )
-                for barcode in barcodes:
-                    raw = str(barcode.text or "").strip()
-                    isbn = raw.replace("-", "").replace(" ", "")
-                    if is_valid_isbn13(isbn):
-                        candidates[isbn] += 1
+            barcodes = zxingcpp.read_barcodes(
+                image_array,
+                try_rotate=True,
+                try_downscale=False,
+                try_invert=True,
+            )
 
-        if candidates:
-            return candidates.most_common(1)[0][0]
+
+            # ------------------------------------------------
+            # CHECK DETECTED BARCODES
+            # ------------------------------------------------
+
+            for barcode in barcodes:
+
+                raw = str(
+                    barcode.text or ""
+                ).strip()
+
+                isbn = (
+                    raw
+                    .replace("-", "")
+                    .replace(" ", "")
+                )
+
+                if (
+                    len(isbn) == 13
+                    and isbn.isdigit()
+                    and isbn.startswith(
+                        ("978", "979")
+                    )
+                    and is_valid_isbn13(isbn)
+                ):
+                    return isbn
+
+
         return None
 
+
     except Exception as e:
-        st.error(f"Barcode scanner error: {e}")
+
+        st.error(
+            f"Barcode scanner error: {e}"
+        )
+
         return None
 
 
@@ -1078,6 +1207,291 @@ def search_books_by_text(text, limit=5):
 
     return unique_results[:limit]
 
+def test_page_text_search(ocr_text):
+    """
+    Identify a book from OCR text captured from an inside page.
+
+    Strategy:
+    1. Clean OCR text.
+    2. Extract useful/distinctive words.
+    3. Build several loose Google Books queries.
+    4. Collect candidates from Google Books.
+    5. Score candidates against the OCR text.
+    6. Return only reasonably strong matches.
+    """
+
+    import re
+    import requests
+
+    if not ocr_text or not ocr_text.strip():
+        return []
+
+    # --------------------------------------------------------
+    # 1. CLEAN OCR TEXT
+    # --------------------------------------------------------
+
+    text = ocr_text.lower()
+
+    # Remove punctuation but keep words
+    words = re.findall(r"[a-zA-Z]{3,}", text)
+
+    if not words:
+        return []
+
+    # Common OCR / English words that are not useful for
+    # identifying a particular book.
+    stopwords = {
+        "the", "and", "that", "this", "with", "from",
+        "they", "them", "their", "there", "here",
+        "have", "has", "had", "was", "were", "are",
+        "you", "your", "for", "not", "but", "what",
+        "when", "where", "which", "who", "how",
+        "why", "into", "about", "then", "than",
+        "just", "like", "know", "said", "say",
+        "she", "her", "his", "him", "its", "our",
+        "out", "one", "all", "can", "could",
+        "would", "should", "will", "been", "being",
+        "get", "got", "did", "does", "do",
+        "mom", "dad", "today", "first", "time"
+    }
+
+    # Keep words that are reasonably distinctive.
+    useful_words = [
+        w for w in words
+        if w not in stopwords and len(w) >= 4
+    ]
+
+    # Remove duplicates while preserving order
+    unique_words = list(dict.fromkeys(useful_words))
+
+    # --------------------------------------------------------
+    # 2. CREATE SEARCH QUERIES
+    # --------------------------------------------------------
+
+    queries = []
+
+    # A. Distinctive individual words
+    #
+    # Take the longest words because these tend to be more
+    # useful than generic short words.
+    long_words = sorted(
+        unique_words,
+        key=lambda x: len(x),
+        reverse=True
+    )
+
+    if len(long_words) >= 3:
+        queries.append(" ".join(long_words[:3]))
+
+    if len(long_words) >= 5:
+        queries.append(" ".join(long_words[:5]))
+
+    # B. First meaningful words from the page
+    #
+    # These can be useful when the page contains a distinctive
+    # sentence opening.
+    first_words = unique_words[:]
+
+    if len(first_words) >= 3:
+        queries.append(" ".join(first_words[:3]))
+
+    if len(first_words) >= 5:
+        queries.append(" ".join(first_words[:5]))
+
+    # C. Look for particularly distinctive phrases around
+    # punctuation / sentence boundaries.
+    sentences = re.split(r"[.!?\n]+", text)
+
+    for sentence in sentences:
+        sentence_words = re.findall(
+            r"[a-zA-Z]{4,}",
+            sentence
+        )
+
+        sentence_words = [
+            w for w in sentence_words
+            if w not in stopwords
+        ]
+
+        if len(sentence_words) >= 3:
+            # Use only a short phrase.
+            phrase = " ".join(sentence_words[:5])
+
+            if phrase not in queries:
+                queries.append(phrase)
+
+    # Remove duplicates
+    queries = list(dict.fromkeys(queries))
+
+    # Limit the number of Google Books requests
+    queries = queries[:6]
+
+    print("PAGE SEARCH QUERIES:")
+    for q in queries:
+        print(" -", q)
+
+    # --------------------------------------------------------
+    # 3. SEARCH GOOGLE BOOKS
+    # --------------------------------------------------------
+
+    candidates = {}
+
+    for query in queries:
+
+        try:
+            response = requests.get(
+                "https://www.googleapis.com/books/v1/volumes",
+                params={
+                    "q": query,
+                    "maxResults": 10
+                },
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                continue
+
+            data = response.json()
+
+            for item in data.get("items", []):
+
+                volume_info = item.get(
+                    "volumeInfo",
+                    {}
+                )
+
+                title = volume_info.get(
+                    "title",
+                    ""
+                ).strip()
+
+                if not title:
+                    continue
+
+                authors = volume_info.get(
+                    "authors",
+                    []
+                )
+
+                description = volume_info.get(
+                    "description",
+                    ""
+                )
+
+                categories = volume_info.get(
+                    "categories",
+                    []
+                )
+
+                # Combine searchable book metadata
+                metadata = " ".join([
+                    title,
+                    " ".join(authors),
+                    description,
+                    " ".join(categories)
+                ]).lower()
+
+                candidates[item.get("id", title)] = {
+                    "title": title,
+                    "authors": authors,
+                    "description": description,
+                    "metadata": metadata,
+                    "cover_url": (
+                        volume_info
+                        .get("imageLinks", {})
+                        .get("thumbnail", "")
+                    ),
+                    "google_books_id": item.get("id"),
+                    "query_hits": candidates.get(
+                        item.get("id", title),
+                        {}
+                    ).get("query_hits", 0) + 1
+                }
+
+        except Exception as e:
+            print(
+                f"Google Books search error for "
+                f"'{query}': {e}"
+            )
+
+    # --------------------------------------------------------
+    # 4. SCORE CANDIDATES
+    # --------------------------------------------------------
+
+    ocr_words = set(
+        w for w in words
+        if len(w) >= 4
+    )
+
+    results = []
+
+    for candidate in candidates.values():
+
+        metadata = candidate["metadata"]
+
+        metadata_words = set(
+            re.findall(
+                r"[a-zA-Z]{4,}",
+                metadata
+            )
+        )
+
+        # Number of OCR words appearing in the metadata
+        word_matches = ocr_words.intersection(
+            metadata_words
+        )
+
+        word_score = len(word_matches)
+
+        # Reward candidates returned by multiple queries
+        query_score = candidate["query_hits"]
+
+        # Overall score
+        score = (
+            word_score * 2
+            + query_score * 3
+        )
+
+        candidate["score"] = score
+        candidate["matched_words"] = list(
+            word_matches
+        )
+
+        results.append(candidate)
+
+    # --------------------------------------------------------
+    # 5. SORT BEST MATCHES FIRST
+    # --------------------------------------------------------
+
+    results.sort(
+        key=lambda x: x["score"],
+        reverse=True
+    )
+
+    # --------------------------------------------------------
+    # 6. REMOVE WEAK RESULTS
+    # --------------------------------------------------------
+
+    # We don't want random books appearing just because
+    # Google Books returned them.
+    strong_results = [
+        r for r in results
+        if r["score"] >= 5
+    ]
+
+    # Maximum 5 candidates shown to user
+    strong_results = strong_results[:5]
+
+    print("\nPAGE SEARCH RESULTS:")
+
+    for result in strong_results:
+        print(
+            f" - {result['title']} "
+            f"(score={result['score']}, "
+            f"matched={result['matched_words']})"
+        )
+
+    return strong_results
 
 # ============================================================
 # CUSTOM CSS
@@ -1884,6 +2298,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "← Back",
+            key="back_from_isbn",
             use_container_width=True,
         ):
 
@@ -1936,10 +2351,13 @@ elif st.session_state.awaiting_confirmation:
                     "✅ Text detected on the book cover!"
                 )
 
-                with st.spinner(
-                    "📚 Searching for your book..."
-                ):
+                # ------------------------------------------------
+                # SEARCH FOR POSSIBLE BOOKS
+                # ------------------------------------------------
 
+                with st.spinner(
+                    "📚 Searching for matching books..."
+                ):
                     candidates = search_books_by_text(
                         detected_text
                     )
@@ -1963,6 +2381,7 @@ elif st.session_state.awaiting_confirmation:
                         "Text detected by ReadTap",
                         detected_text,
                         height=150,
+                        key="cover_detected_text",
                     )
 
                     st.info(
@@ -1983,6 +2402,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "← Back",
+            key="back_from_cover",
             use_container_width=True,
         ):
 
@@ -2036,33 +2456,127 @@ elif st.session_state.awaiting_confirmation:
                     "✅ Text detected on the page!"
                 )
 
-                with st.spinner(
-                    "📚 Searching for your book..."
+                                # =================================================
+                # TEMPORARY PAGE SEARCH TEST
+                # =================================================
+
+                if st.button(
+                    "🧪 Test Page Search",
+                    use_container_width=True,
                 ):
 
-                    candidates = search_books_by_text(
-                        detected_text
+                    with st.spinner(
+                        "🔎 Testing page text search..."
+                    ):
+
+                        page_test = (
+                            test_page_text_search(
+                                detected_text
+                            )
+                        )
+
+                    st.markdown(
+                        "### 🔎 Search phrases"
                     )
 
-                if candidates:
+                    if isinstance(page_test, dict):
 
-                    st.session_state.book_candidates = candidates
-                    st.session_state.scanning_page = False
-                    st.session_state.scanning_cover = False
+                        phrases = page_test.get(
+                            "phrases",
+                            []
+                        )
 
-                    st.rerun()
+                        results = page_test.get(
+                            "results",
+                            []
+                        )
 
-                else:
+                    else:
 
-                    st.warning(
-                        "I found text on the page, "
-                        "but couldn't match it to a book."
+                        phrases = []
+                        results = page_test
+
+
+                    for phrase in phrases:
+
+                        st.write(
+                            f'• "{phrase}"'
+                        )
+
+
+                    st.markdown(
+                        "### 📚 Google Books results"
                     )
 
+                    if results:
+
+                        for result in results:
+
+                            if not isinstance(
+                                result,
+                                dict
+                            ):
+
+                                continue
+
+                            title = result.get(
+                                "title",
+                                "Unknown title"
+                            )
+
+                            author = result.get(
+                                "author",
+                                ""
+                            )
+
+                            snippet = result.get(
+                                "snippet",
+                                ""
+                            )
+
+                            matched_phrase = result.get(
+                                "phrase",
+                                ""
+                            )
+
+                            st.markdown(
+                                f"**{title}**"
+                            )
+
+                            if author:
+
+                                st.caption(
+                                    f"✍️ {author}"
+                                )
+
+                            if snippet:
+
+                                st.info(
+                                    snippet
+                                )
+
+                            if matched_phrase:
+
+                                st.caption(
+                                    f"Matched phrase: "
+                                    f"{matched_phrase}"
+                                )
+
+                            st.write("")
+
+                    else:
+
+                        st.warning(
+                            "Google Books returned "
+                            "no usable results."
+                        )
+                        
+                                # =================================================
                     st.text_area(
                         "Text detected by ReadTap",
                         detected_text,
                         height=150,
+                        key="page_detected_text",
                     )
 
                     st.info(
@@ -2084,6 +2598,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "← Back",
+            key="back_from_page",
             use_container_width=True,
         ):
 
@@ -2217,6 +2732,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "🔄 Scan Again",
+            key="scan_again_book_found",
             use_container_width=True,
         ):
 
@@ -2232,6 +2748,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "✏️ Enter Title Manually",
+            key="manual_entry_book_found",
             use_container_width=True,
         ):
 
@@ -2353,6 +2870,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "🔄 Scan Again",
+            key="scan_again_candidates",
             use_container_width=True,
         ):
 
@@ -2372,6 +2890,7 @@ elif st.session_state.awaiting_confirmation:
 
         if st.button(
             "✏️ Enter Title Manually",
+            key="manual_entry_candidates",
             use_container_width=True,
         ):
 
