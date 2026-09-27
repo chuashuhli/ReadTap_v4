@@ -77,83 +77,24 @@ def is_valid_isbn13(isbn):
 
 def lookup_book_by_isbn(isbn):
     """
-    Diagnostic ISBN lookup.
-    Shows exactly what Google Books and Open Library return.
+    Look up a book using ISBN.
+
+    Step 1:
+    - Normalize the ISBN
+    - Search Google Books
+    - Check ALL returned results for an exact ISBN match
+    - Fall back to the first usable Google Books result
+    - Then try Open Library
     """
+
+    # ------------------------------------------------
+    # 1. NORMALIZE ISBN
+    # ------------------------------------------------
 
     isbn = str(isbn).replace("-", "").replace(" ", "").strip()
 
     if not isbn:
         return None
-
-    # ------------------------------------------------
-    # GOOGLE BOOKS
-    # ------------------------------------------------
-
-    try:
-        response = requests.get(
-            "https://www.googleapis.com/books/v1/volumes",
-            params={
-                "q": f"isbn:{isbn}",
-                "maxResults": 10
-            },
-            timeout=10
-        )
-
-        st.write("GOOGLE BOOKS STATUS:", response.status_code)
-
-        if response.status_code == 200:
-            data = response.json()
-
-            st.write(
-                "GOOGLE BOOKS RESPONSE:",
-                data
-            )
-
-        else:
-            st.error(
-                f"Google Books returned HTTP {response.status_code}"
-            )
-
-    except Exception as e:
-        st.error(f"Google Books lookup error: {e}")
-
-    # ------------------------------------------------
-    # OPEN LIBRARY
-    # ------------------------------------------------
-
-    try:
-        response = requests.get(
-            "https://openlibrary.org/api/books",
-            params={
-                "bibkeys": f"ISBN:{isbn}",
-                "format": "json",
-                "jscmd": "data"
-            },
-            timeout=10
-        )
-
-        st.write("OPEN LIBRARY STATUS:", response.status_code)
-
-        if response.status_code == 200:
-            data = response.json()
-
-            st.write(
-                "OPEN LIBRARY RESPONSE:",
-                data
-            )
-
-        else:
-            st.error(
-                f"Open Library returned HTTP {response.status_code}"
-            )
-
-    except Exception as e:
-        st.error(f"Open Library lookup error: {e}")
-
-    # Diagnostic version deliberately does not
-    # return a book yet.
-    return None
 
     # ------------------------------------------------
     # 2. GOOGLE BOOKS
