@@ -640,6 +640,10 @@ def search_books_by_text(text, limit=5):
         "bestseller",
         "international",
         "tuition",
+        "mojang",
+        "studio",
+        "official",
+        "product",
     }
 
     meaningful_words = []
@@ -680,22 +684,67 @@ def search_books_by_text(text, limit=5):
     queries = []
 
     # --------------------------------------------------------
-    # 1. Full OCR text
+    # PHRASE-BASED SEARCHES
     # --------------------------------------------------------
 
-    queries.append(
-        cleaned_text
-    )
+    # Search consecutive pairs of meaningful words.
+    # This helps identify distinctive book titles such as
+    # "Redstone Handbook".
 
-    # --------------------------------------------------------
-    # 2. Meaningful words
-    # --------------------------------------------------------
+    if len(meaningful_words) >= 2:
 
-    queries.append(
-        " ".join(
-            meaningful_words
+        for i in range(
+            len(meaningful_words) - 1
+        ):
+
+            phrase = " ".join(
+                meaningful_words[i:i + 2]
+            )
+
+            if phrase:
+
+                queries.append(
+                    phrase
+                )
+
+
+    # Search consecutive groups of three words.
+    # This can catch titles such as
+    # "Minecraft Redstone Handbook".
+
+    if len(meaningful_words) >= 3:
+
+        for i in range(
+            len(meaningful_words) - 2
+        ):
+
+            phrase = " ".join(
+                meaningful_words[i:i + 3]
+            )
+
+            if phrase:
+
+                queries.append(
+                    phrase
+                )
+
+        # --------------------------------------------------------
+        # 1. Full OCR text
+        # --------------------------------------------------------
+
+        queries.append(
+            cleaned_text
         )
-    )
+
+        # --------------------------------------------------------
+        # 2. Meaningful words
+        # --------------------------------------------------------
+
+        queries.append(
+            " ".join(
+                meaningful_words
+            )
+        )
 
     # --------------------------------------------------------
     # 3. First several meaningful words
@@ -1242,6 +1291,50 @@ def search_books_by_text(text, limit=5):
         ):
 
             score += 60
+
+
+        # ----------------------------------------------------
+        # DISTINCTIVE TWO-WORD PHRASES
+        # ----------------------------------------------------
+
+        ocr_words = normalise_words(
+            cleaned_text
+        )
+
+        for i in range(
+            len(ocr_words) - 1
+        ):
+
+            phrase = " ".join(
+                ocr_words[i:i + 2]
+            )
+
+            if (
+                phrase
+                and phrase in normalised_title
+            ):
+
+                score += 25
+
+
+        # ----------------------------------------------------
+        # DISTINCTIVE THREE-WORD PHRASES
+        # ----------------------------------------------------
+
+        for i in range(
+            len(ocr_words) - 2
+        ):
+
+            phrase = " ".join(
+                ocr_words[i:i + 3]
+            )
+
+            if (
+                phrase
+                and phrase in normalised_title
+            ):
+
+                score += 40
 
         # ----------------------------------------------------
         # DISTINCTIVE TITLE WORD COUNT
