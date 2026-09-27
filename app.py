@@ -77,9 +77,16 @@ def is_valid_isbn13(isbn):
 
 def lookup_book_by_isbn(isbn):
     """
-    Diagnostic ISBN lookup.
-    Shows exactly what Google Books and Open Library return.
+    Look up a book using ISBN.
+
+    1. Normalize ISBN
+    2. Try Open Library's current ISBN API
+    3. Fall back to Google Books
     """
+
+    # ------------------------------------------------
+    # 1. NORMALIZE ISBN
+    # ------------------------------------------------
 
     isbn = str(isbn).replace("-", "").replace(" ", "").strip()
 
@@ -87,76 +94,58 @@ def lookup_book_by_isbn(isbn):
         return None
 
     # ------------------------------------------------
-    # GOOGLE BOOKS
+    # 2. OPEN LIBRARY ISBN API
     # ------------------------------------------------
 
     try:
         response = requests.get(
-            "https://www.googleapis.com/books/v1/volumes",
-            params={
-                "q": f"isbn:{isbn}",
-                "maxResults": 10
-            },
+            f"https://openlibrary.org/isbn/{isbn}.json",
             timeout=10
         )
 
-        st.write("GOOGLE BOOKS STATUS:", response.status_code)
-
         if response.status_code == 200:
+
             data = response.json()
 
-            st.write(
-                "GOOGLE BOOKS RESPONSE:",
-                data
+            title = str(
+                data.get("title", "")
+            ).strip()
+
+            authors_data = data.get(
+                "authors",
+                []
             )
 
-        else:
-            st.error(
-                f"Google Books returned HTTP {response.status_code}"
+            authors = []
+
+            for author_data in authors_data:
+
+                author = author_data.get(
+                    "name",
+                    ""
+                )
+
+                if author:
+                    authors.append(
+                        str(author).strip()
+                    )
+
+            author = ", ".join(
+                a for a in authors if a
             )
 
-    except Exception as e:
-        st.error(f"Google Books lookup error: {e}")
+            if title:
+                return {
+                    "isbn": isbn,
+                    "title": title,
+                    "author": author
+                }
+
+    except Exception:
+        pass
 
     # ------------------------------------------------
-    # OPEN LIBRARY
-    # ------------------------------------------------
-
-    try:
-        response = requests.get(
-            "https://openlibrary.org/api/books",
-            params={
-                "bibkeys": f"ISBN:{isbn}",
-                "format": "json",
-                "jscmd": "data"
-            },
-            timeout=10
-        )
-
-        st.write("OPEN LIBRARY STATUS:", response.status_code)
-
-        if response.status_code == 200:
-            data = response.json()
-
-            st.write(
-                "OPEN LIBRARY RESPONSE:",
-                data
-            )
-
-        else:
-            st.error(
-                f"Open Library returned HTTP {response.status_code}"
-            )
-
-    except Exception as e:
-        st.error(f"Open Library lookup error: {e}")
-
-    # Diagnostic version deliberately does not
-    # return a book yet.
-    return None
-
-    # ------------------------------------------------
-    # 2. GOOGLE BOOKS
+    # 3. GOOGLE BOOKS FALLBACK
     # ------------------------------------------------
 
     try:
@@ -170,15 +159,24 @@ def lookup_book_by_isbn(isbn):
         )
 
         if response.status_code == 200:
-            data = response.json()
-            items = data.get("items", [])
 
-            # --------------------------------------------
-            # First: look for an EXACT ISBN match
-            # --------------------------------------------
+            data = response.json()
+
+            items = data.get(
+                "items",
+                []
+            )
+
+            # ----------------------------------------
+            # First: exact ISBN match
+            # ----------------------------------------
 
             for item in items:
-                volume_info = item.get("volumeInfo", {})
+
+                volume_info = item.get(
+                    "volumeInfo",
+                    {}
+                )
 
                 identifiers = volume_info.get(
                     "industryIdentifiers",
@@ -188,13 +186,22 @@ def lookup_book_by_isbn(isbn):
                 for identifier in identifiers:
 
                     identifier_value = str(
-                        identifier.get("identifier", "")
-                    ).replace("-", "").replace(" ", "").strip()
+                        identifier.get(
+                            "identifier",
+                            ""
+                        )
+                    ).replace("-", "").replace(
+                        " ",
+                        ""
+                    ).strip()
 
                     if identifier_value == isbn:
 
                         title = str(
-                            volume_info.get("title", "")
+                            volume_info.get(
+                                "title",
+                                ""
+                            )
                         ).strip()
 
                         authors = volume_info.get(
@@ -202,7 +209,9 @@ def lookup_book_by_isbn(isbn):
                             []
                         )
 
-                        author = ", ".join(authors) if authors else ""
+                        author = ", ".join(
+                            authors
+                        ) if authors else ""
 
                         if title:
                             return {
@@ -211,16 +220,22 @@ def lookup_book_by_isbn(isbn):
                                 "author": author
                             }
 
-            # --------------------------------------------
-            # Second: if exact ISBN wasn't found,
-            # use the first usable Google Books result
-            # --------------------------------------------
+            # ----------------------------------------
+            # Second: first usable result
+            # ----------------------------------------
 
             for item in items:
-                volume_info = item.get("volumeInfo", {})
+
+                volume_info = item.get(
+                    "volumeInfo",
+                    {}
+                )
 
                 title = str(
-                    volume_info.get("title", "")
+                    volume_info.get(
+                        "title",
+                        ""
+                    )
                 ).strip()
 
                 if title:
@@ -230,7 +245,9 @@ def lookup_book_by_isbn(isbn):
                         []
                     )
 
-                    author = ", ".join(authors) if authors else ""
+                    author = ", ".join(
+                        authors
+                    ) if authors else ""
 
                     return {
                         "isbn": isbn,
@@ -238,65 +255,12 @@ def lookup_book_by_isbn(isbn):
                         "author": author
                     }
 
-    except Exception as e:
-        st.error(f"Google Books lookup error: {e}")
+    except Exception:
+        pass
 
     # ------------------------------------------------
-    # 3. OPEN LIBRARY FALLBACK
+    # 4. NOTHING FOUND
     # ------------------------------------------------
-
-    try:
-        response = requests.get(
-            "https://openlibrary.org/api/books",
-            params={
-                "bibkeys": f"ISBN:{isbn}",
-                "format": "json",
-                "jscmd": "data"
-            },
-            timeout=10
-        )
-
-        if response.status_code == 200:
-
-            data = response.json()
-
-            book = data.get(
-                f"ISBN:{isbn}"
-            )
-
-            if book:
-
-                title = str(
-                    book.get("title", "")
-                ).strip()
-
-                authors_data = book.get(
-                    "authors",
-                    []
-                )
-
-                authors = []
-
-                for author_data in authors_data:
-
-                    author_name = str(
-                        author_data.get("name", "")
-                    ).strip()
-
-                    if author_name:
-                        authors.append(author_name)
-
-                author = ", ".join(authors)
-
-                if title:
-                    return {
-                        "isbn": isbn,
-                        "title": title,
-                        "author": author
-                    }
-
-    except Exception as e:
-        st.error(f"Open Library lookup error: {e}")
 
     return None
 
