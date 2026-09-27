@@ -239,11 +239,6 @@ def lookup_book_by_isbn(isbn):
     except Exception as e:
         st.error(f"Open Library lookup error: {e}")
 
-    # ----------------------------------------------except Exception:
-        pass--
-    # 4. NOTHING FOUND
-    # ------------------------------------------------
-
     return None
 
 # ============================================================
