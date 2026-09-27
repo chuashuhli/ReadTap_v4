@@ -1017,13 +1017,37 @@ def search_books_by_text(text, limit=5):
                     []
                 )
 
-                if isbn_list:
+                # Prefer ISBN-13 when available.
+                for isbn_value in isbn_list:
 
-                    isbn = str(
-                        isbn_list[0]
-                    )
+                    isbn_value = str(
+        isbn_value
+    ).replace("-", "").replace(" ", "").strip()
 
+                if len(isbn_value) == 13 and isbn_value.isdigit():
 
+        if isbn_value.startswith(
+            ("978", "979")
+        ):
+
+            isbn = isbn_value
+            break
+
+        # If no ISBN-13 is available,
+        # use a valid ISBN-10.
+        if not isbn:
+
+            for isbn_value in isbn_list:
+
+                isbn_value = str(
+                    isbn_value
+                ).replace("-", "").replace(" ", "").strip()
+
+                if len(isbn_value) == 10:
+
+                    isbn = isbn_value
+                    break
+                    
                 results.append(
                     {
                         "title": title,
@@ -2793,9 +2817,11 @@ elif st.session_state.awaiting_confirmation:
 ✍️ {book["author"] or "Author unknown"}
 </div>
 
+{f'''
 <div class="reading-start">
-🔢 ISBN: {book["isbn"] or "Not available"}
+🔢 ISBN: {book["isbn"]}
 </div>
+''' if book.get("isbn") else ""}
 
 </div>
 """
