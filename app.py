@@ -81,7 +81,8 @@ def lookup_book_by_isbn(isbn):
 
     1. Normalize ISBN
     2. Try Open Library's current ISBN API
-    3. Fall back to Google Books
+    3. Extract author name from Open Library
+    4. Fall back to Google Books
     """
 
     # ------------------------------------------------
@@ -111,53 +112,76 @@ def lookup_book_by_isbn(isbn):
                 data.get("title", "")
             ).strip()
 
+            # ----------------------------------------
+            # GET AUTHORS
+            # ----------------------------------------
+
             authors_data = data.get("authors", [])
 
-authors = []
+            authors = []
 
-for author_data in authors_data:
+            for author_data in authors_data:
 
-    # Open Library may return:
-    # {"name": "Author Name"}
-    author_name = author_data.get("name", "")
+                # Some Open Library records provide:
+                # {"name": "Author Name"}
 
-    if author_name:
-        authors.append(
-            str(author_name).strip()
-        )
-
-    # Some records may instead provide
-    # an author reference such as:
-    # {"key": "/authors/OL123A"}
-    elif author_data.get("key"):
-
-        author_key = author_data.get("key")
-
-        try:
-            author_response = requests.get(
-                f"https://openlibrary.org{author_key}.json",
-                timeout=10
-            )
-
-            if author_response.status_code == 200:
-
-                author_data_full = author_response.json()
-
-                author_name = str(
-                    author_data_full.get("name", "")
-                ).strip()
+                author_name = author_data.get(
+                    "name",
+                    ""
+                )
 
                 if author_name:
-                    authors.append(author_name)
 
-        except Exception:
-            pass
+                    authors.append(
+                        str(author_name).strip()
+                    )
 
-author = ", ".join(
-    a for a in authors if a
-)
+                # Other records provide an author key:
+                # {"key": "/authors/OL123A"}
+
+                elif author_data.get("key"):
+
+                    author_key = author_data.get("key")
+
+                    try:
+
+                        author_response = requests.get(
+                            f"https://openlibrary.org{author_key}.json",
+                            timeout=10
+                        )
+
+                        if author_response.status_code == 200:
+
+                            author_data_full = (
+                                author_response.json()
+                            )
+
+                            author_name = str(
+                                author_data_full.get(
+                                    "name",
+                                    ""
+                                )
+                            ).strip()
+
+                            if author_name:
+
+                                authors.append(
+                                    author_name
+                                )
+
+                    except Exception:
+                        pass
+
+            author = ", ".join(
+                a for a in authors if a
+            )
+
+            # ----------------------------------------
+            # RETURN OPEN LIBRARY RESULT
+            # ----------------------------------------
 
             if title:
+
                 return {
                     "isbn": isbn,
                     "title": title,
@@ -172,6 +196,7 @@ author = ", ".join(
     # ------------------------------------------------
 
     try:
+
         response = requests.get(
             "https://www.googleapis.com/books/v1/volumes",
             params={
@@ -213,7 +238,10 @@ author = ", ".join(
                             "identifier",
                             ""
                         )
-                    ).replace("-", "").replace(
+                    ).replace(
+                        "-",
+                        ""
+                    ).replace(
                         " ",
                         ""
                     ).strip()
@@ -237,6 +265,7 @@ author = ", ".join(
                         ) if authors else ""
 
                         if title:
+
                             return {
                                 "isbn": isbn,
                                 "title": title,
@@ -286,7 +315,7 @@ author = ", ".join(
     # ------------------------------------------------
 
     return None
-
+    
 # ============================================================
 # SCAN ISBN BARCODE FROM IMAGE
 # ============================================================
