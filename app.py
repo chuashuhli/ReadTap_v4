@@ -179,8 +179,8 @@ def lookup_book_by_isbn(isbn):
                         "author": author
                     }
 
-    except Exception:
-        pass
+    except Exception as e:
+        st.error(f"Google Books lookup error: {e}")
 
     # ------------------------------------------------
     # 3. OPEN LIBRARY FALLBACK
@@ -236,10 +236,11 @@ def lookup_book_by_isbn(isbn):
                         "author": author
                     }
 
-    except Exception:
-        pass
+    except Exception as e:
+        st.error(f"Open Library lookup error: {e}")
 
-    # ------------------------------------------------
+    # ----------------------------------------------except Exception:
+        pass--
     # 4. NOTHING FOUND
     # ------------------------------------------------
 
