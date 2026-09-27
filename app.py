@@ -111,28 +111,51 @@ def lookup_book_by_isbn(isbn):
                 data.get("title", "")
             ).strip()
 
-            authors_data = data.get(
-                "authors",
-                []
+            authors_data = data.get("authors", [])
+
+authors = []
+
+for author_data in authors_data:
+
+    # Open Library may return:
+    # {"name": "Author Name"}
+    author_name = author_data.get("name", "")
+
+    if author_name:
+        authors.append(
+            str(author_name).strip()
+        )
+
+    # Some records may instead provide
+    # an author reference such as:
+    # {"key": "/authors/OL123A"}
+    elif author_data.get("key"):
+
+        author_key = author_data.get("key")
+
+        try:
+            author_response = requests.get(
+                f"https://openlibrary.org{author_key}.json",
+                timeout=10
             )
 
-            authors = []
+            if author_response.status_code == 200:
 
-            for author_data in authors_data:
+                author_data_full = author_response.json()
 
-                author = author_data.get(
-                    "name",
-                    ""
-                )
+                author_name = str(
+                    author_data_full.get("name", "")
+                ).strip()
 
-                if author:
-                    authors.append(
-                        str(author).strip()
-                    )
+                if author_name:
+                    authors.append(author_name)
 
-            author = ", ".join(
-                a for a in authors if a
-            )
+        except Exception:
+            pass
+
+author = ", ".join(
+    a for a in authors if a
+)
 
             if title:
                 return {
